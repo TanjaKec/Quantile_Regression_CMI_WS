@@ -1,0 +1,362 @@
+---
+title: "Case Study: Education, Ethnicity and Wages"
+subtitle: "Solutions, Instructor Use Only"
+author: "Tatjana Kecojević"
+date: "24 June 2026"
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 2
+    number-sections: true
+    code-fold: true
+    code-summary: "Show/Hide Code"
+    smooth-scroll: true
+    page-layout: article
+    
+  pdf:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    documentclass: article
+    geometry:
+      - margin=1in
+
+execute:
+  echo: true
+  warning: false
+  message: false
+  freeze: false
+---
+
+::: {.callout-warning}
+## Instructor Use Only
+
+This file contains complete solutions to all exercises. Please do not distribute to participants.
+:::
+
+```{r setup}
+#| include: false
+
+library(tidyverse)
+library(quantreg)
+library(AER)
+library(broom)
+library(patchwork)
+
+theme_set(theme_minimal())
+
+set.seed(4821)
+```
+
+# Block 1: Setup and Data Exploration
+
+## Exercise 0: Setup
+
+```{r ex0-setup}
+library(tidyverse)
+library(quantreg)
+library(AER)
+library(broom)
+
+data(CPS1988)
+```
+
+```{r ex0-inspect}
+glimpse(CPS1988)
+summary(CPS1988)
+
+# Check for missing values
+CPS1988 |>
+  summarise(across(everything(), \(x) sum(is.na(x))))
+```
+
+**Answers:**
+
+1. 28,155 observations.
+2. `wage`, `education`, `experience` are numeric; `ethnicity`, `smsa`, `region`, `parttime` are factors.
+3. No missing values, `sum(is.na(CPS1988))` returns 0.
+
+---
+
+## Exercise 1: Explore the Outcome Variable
+
+```{r ex1-wage-dist}
+#| fig-width: 9
+#| fig-height: 4
+
+p_raw <- ggplot(CPS1988, aes(x = wage)) +
+  geom_histogram(bins = 60, fill = "steelblue", alpha = 0.7) +
+  labs(title = "Weekly Wages (USD)", x = "Wage", y = "Count")
+
+p_log <- ggplot(CPS1988, aes(x = log(wage))) +
+  geom_histogram(bins = 60, fill = "steelblue", alpha = 0.7) +
+  labs(title = "Log Weekly Wages", x = "log(Wage)", y = "Count")
+
+p_raw + p_log
+```
+
+```{r ex1-scatter}
+#| fig-width: 7
+#| fig-height: 4
+
+ggplot(CPS1988, aes(x = education, y = log(wage), colour = ethnicity)) +
+  geom_point(alpha = 0.15) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1.2) +
+  scale_colour_manual(
+    values = c("cauc" = "steelblue", "afam" = "tomato"),
+    labels = c("Caucasian", "African-American"),
+    name   = "Ethnicity"
+  ) +
+  labs(
+    title = "Log Wages vs Education by Ethnicity",
+    x     = "Years of education",
+    y     = "log(wage)"
+  )
+```
+
+**Answers:**
+
+1. Wages are strongly right-skewed, a long upper tail pulled by a small number of very high earners.
+2. The log transformation produces an approximately symmetric, roughly bell-shaped distribution.
+3. Log wages are standard in earnings regressions because: (a) the distribution becomes more symmetric, satisfying OLS assumptions better; (b) coefficients are interpretable as approximate percentage changes; (c) the relationship between wages and education is closer to linear on the log scale.
+4. Yes, more educated workers earn more. The relationship looks approximately linear on the log scale.
+5. The slopes appear similar but African-American workers earn less at every education level, the lines are roughly parallel but with a downward shift for the `afam` group.
+
+---
+
+# Block 2: OLS Baseline
+
+## Exercise 2: OLS Model
+
+```{r ex2-ols}
+formula_wages <- log(wage) ~ education + experience + I(experience^2) + 
+                              ethnicity + smsa
+
+ols_fit <- lm(formula_wages, data = CPS1988)
+summary(ols_fit)
+```
+
+```{r ex2-coef-table}
+tidy(ols_fit, conf.int = TRUE) |>
+  filter(term != "(Intercept)") |>
+  mutate(across(where(is.numeric), \(x) round(x, 4)))
+```
+
+```{r ex2-residuals}
+#| fig-width: 8
+#| fig-height: 4
+
+p_res1 <- ggplot(mapping = aes(x = fitted(ols_fit), y = residuals(ols_fit))) +
+  geom_point(alpha = 0.10, colour = "steelblue") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Residuals vs Fitted", x = "Fitted values", y = "Residuals")
+
+p_res2 <- ggplot(mapping = aes(sample = residuals(ols_fit))) +
+  stat_qq(alpha = 0.2, colour = "steelblue") +
+  stat_qq_line(colour = "tomato") +
+  labs(title = "Normal Q-Q Plot", x = "Theoretical quantiles", y = "Sample quantiles")
+
+p_res1 + p_res2
+```
+
+**Answers:**
+
+1. The education coefficient is approximately 0.083. Interpretation: *each additional year of education is associated with approximately 8.3% higher weekly wages, holding experience, ethnicity, and location constant.*
+2. The `ethnicityafam` coefficient is approximately −0.261. This means African-American workers earn approximately $e^{-0.261} - 1 \approx$ −23% less than comparable Caucasian workers.
+3. The coefficient on `I(experience^2)` is negative, confirming a concave (inverted-U) relationship: wages increase with experience but at a diminishing rate.
+4. The residual plot shows a slight funnel shape, the spread of residuals increases with fitted values, indicating mild heteroscedasticity.
+5. Heteroscedasticity suggests the variance of wages is not constant across the fitted range, which means OLS standard errors may be unreliable and the conditional mean may not be the most informative summary.
+
+---
+
+# Block 3: Median Regression
+
+## Exercise 3: Median Regression
+
+```{r ex3-median}
+fit_median <- rq(formula_wages, data = CPS1988, tau = 0.5)
+summary(fit_median, se = "nid") 
+# Alternatives:
+# s <- summary(fit, se = "boot", R = 50)    # quick experimentation
+# s <- summary(fit, se = "boot", R = 1000)  # more stable bootstrap inference
+```
+
+```{r ex3-compare}
+tibble(
+  Term               = names(coef(ols_fit))[-1],
+  `OLS (mean)`       = round(coef(ols_fit)[-1], 4),
+  `QR (τ = 0.50)`    = round(coef(fit_median)[-1], 4),
+  Difference         = round(coef(fit_median)[-1] - coef(ols_fit)[-1], 4)
+)
+```
+
+**Answers:**
+
+1. The median regression education coefficient is slightly lower than the OLS estimate. OLS is pulled upward by high earners at the top of the wage distribution, so it slightly overstates the return for a "typical" worker.
+2. Median regression estimates the value at the *centre* of the conditional distribution, the wage that half of workers with given characteristics earn more than, and half earn less than. OLS estimates the average wage, which is pulled upward by high earners.
+3. OLS and median regression agree more closely on a symmetric distribution. When the distribution is skewed (as wages are), the mean and median diverge.
+
+---
+
+# Block 4: Multiple Quantiles
+
+## Exercise 4: Education Across Quantiles
+
+```{r ex4-multi}
+taus <- c(0.10, 0.25, 0.50, 0.75, 0.90)
+fit_multi <- rq(formula_wages, data = CPS1988, tau = taus)
+coef(fit_multi)
+```
+
+```{r ex4-edu-table}
+edu_df <- map_dfr(taus, \(t) {
+  fit <- rq(formula_wages, data = CPS1988, tau = t)
+  s   <- summary(fit, se = "nid")
+  # Alternatives:
+  # s <- summary(fit, se = "boot", R = 50)    # quick experimentation
+  # s <- summary(fit, se = "boot", R = 1000)  # more stable bootstrap inference
+  cm  <- s$coefficients
+  tibble(
+    `τ`         = t,
+    `Quantile`  = paste0(t * 100, "th percentile"),
+    `Education` = round(cm["education", "Value"], 4),
+    `Lower 95%` = round(cm["education", "Value"] - 1.96 * cm["education", "Std. Error"], 4),
+    `Upper 95%` = round(cm["education", "Value"] + 1.96 * cm["education", "Std. Error"], 4)
+  )
+})
+
+edu_df
+```
+
+**Answers:**
+
+1. The return to education tends to be larger at higher wage quantiles than at lower wage quantiles. This suggests that additional schooling is associated with greater wage gains among higher-paid workers than among lower-paid workers.
+2. Workers who are already high earners gain more from each additional year of schooling. Education amplifies rather than reduces wage inequality.
+3. The OLS estimate is roughly the average return, it understates the return for high earners and overstates it for low earners.
+
+---
+
+## Exercise 5: Ethnicity Gap
+
+```{r ex5-ethnicity}
+afam_df <- map_dfr(taus, \(t) {
+  fit <- rq(formula_wages, data = CPS1988, tau = t)
+  s   <- summary(fit, se = "nid")
+  # Alternatives:
+  # s <- summary(fit, se = "boot", R = 50)    # quick experimentation
+  # s <- summary(fit, se = "boot", R = 1000)  # more stable bootstrap inference
+  cm  <- s$coefficients
+  tibble(
+    `τ`            = t,
+    `Quantile`     = paste0(t * 100, "th percentile"),
+    `Ethnicity gap` = round(cm["ethnicityafam", "Value"], 4),
+    `Lower 95%`    = round(cm["ethnicityafam", "Value"] - 1.96 * cm["ethnicityafam", "Std. Error"], 4),
+    `Upper 95%`    = round(cm["ethnicityafam", "Value"] + 1.96 * cm["ethnicityafam", "Std. Error"], 4)
+  )
+})
+
+afam_df
+```
+
+**Answers:**
+
+1. The gap is larger (more negative) at lower quantiles, the wage penalty for African-American workers is greatest at the bottom of the distribution.
+2. The wage penalty falls most heavily on workers who are already low earners. Discrimination or structural disadvantage appears concentrated at the lower end of the distribution.
+3. The OLS estimate is an average. It underestimates the gap at the bottom and overestimates it at the top.
+4. Policy implication: interventions aiming to reduce the racial wage gap (e.g., minimum wage increases, targeted hiring, education investment) will have the largest impact on low-wage workers, which is also where the gap is largest. A focus on the mean underestimates the urgency at the bottom.
+
+---
+
+# Block 5: Visualisation
+
+## Exercise 6: Quantile Lines on a Scatterplot
+
+```{r ex6-qr-lines}
+#| fig-width: 7
+#| fig-height: 5
+
+# Fit QR on education only for a clean 2D visualisation
+qr_edu <- map_dfr(taus, \(t) {
+  fit <- rq(log(wage) ~ education, data = CPS1988, tau = t)
+  tibble(
+    tau       = factor(paste0("Q", t * 100), levels = paste0("Q", taus * 100)),
+    intercept = coef(fit)[1],
+    slope     = coef(fit)[2]
+  )
+})
+
+ols_edu_simple <- lm(log(wage) ~ education, data = CPS1988)
+
+ggplot(CPS1988, aes(x = education, y = log(wage))) +
+  geom_point(alpha = 0.08, colour = "grey50") +
+  geom_abline(data = qr_edu,
+              aes(intercept = intercept, slope = slope, colour = tau),
+              linewidth = 1) +
+  geom_abline(intercept = coef(ols_edu_simple)[1],
+              slope     = coef(ols_edu_simple)[2],
+              linetype  = "dashed", linewidth = 1.1, colour = "black") +
+  scale_colour_brewer(palette = "RdYlBu", name = "Quantile", direction = -1) +
+  annotate("text", x = 3, y = 7.2, label = "OLS", fontface = "bold", size = 3.5) +
+  labs(
+    title    = "Log Wage vs Education: OLS and Quantile Regression Lines",
+    subtitle = "Dashed = OLS · Coloured lines = QR at τ ∈ {0.10, 0.25, 0.50, 0.75, 0.90}",
+    x        = "Years of education",
+    y        = "log(wage)"
+  )
+```
+
+**Answers:**
+
+1. Non-parallel lines mean that education has a different effect on wages at different points of the distribution, the relationship is heterogeneous.
+2. The Q90 line (top) is steepest; the Q10 line (bottom) is shallowest.
+3. The fan widens as education increases, at higher education levels, the gap between high and low earners is larger. Education increases wage inequality.
+
+---
+
+## Exercise 7: Coefficient Plot
+
+```{r ex7-coefplot}
+#| fig-width: 7
+#| fig-height: 4
+
+ols_edu_coef <- coef(ols_fit)["education"]
+
+ggplot(edu_df, aes(x = `τ`, y = Education)) +
+  geom_ribbon(aes(ymin = `Lower 95%`, ymax = `Upper 95%`),
+              alpha = 0.20, fill = "steelblue") +
+  geom_line(colour = "steelblue", linewidth = 1) +
+  geom_point(colour = "steelblue", size = 2.5) +
+  geom_hline(yintercept = ols_edu_coef, linetype = "dashed",
+             colour = "tomato", linewidth = 0.9) +
+  annotate("text", x = 0.13, y = ols_edu_coef + 0.001,
+           label = "OLS", colour = "tomato", size = 3.5, hjust = 0) +
+  scale_x_continuous(breaks = taus, labels = paste0(taus * 100, "th")) +
+  labs(
+    title    = "Return to Education Across the Wage Distribution",
+    subtitle = "Blue = QR estimate with 95% CI   ·   Red dashed = OLS",
+    x        = "Quantile (τ)",
+    y        = "Coefficient on education"
+  )
+```
+
+**Answers:**
+
+1. The line trends upward, the return to education is systematically higher at higher quantiles.
+2. The OLS estimate falls below the confidence band at the 90th quantile and above it at the 10th, meaning OLS significantly misrepresents the return to education for workers at the extremes of the distribution.
+3. Model answer: the median regression estimate is a reasonable single-number summary because it describes a "typical" worker rather than being pulled by extremes. However, reporting the full coefficient plot communicates that the answer genuinely depends on which part of the distribution you are asking about, and for policy purposes, that heterogeneity matters.
+
+---
+
+# Block 6: Wrap-Up
+
+**Model answers:**
+
+**1.** The return to education is not uniform across the wage distribution. Workers at the 90th percentile gain approximately X% more from each additional year of schooling than workers at the 10th percentile. Education amplifies existing wage inequality rather than equalising it.
+
+**2.** The ethnic wage gap is largest at the bottom of the wage distribution. African-American workers at the 10th percentile face a larger proportional wage penalty than those at the 90th percentile. OLS averages over this heterogeneity and conceals where the disadvantage is most acute.
+
+**3.** Open-ended. Good examples include: health returns to income (larger at the bottom?), effects of parental education on children's outcomes, returns to training programmes for different skill levels.
+
+**4.** Good answers include: checking for quantile crossing (especially at extreme $\tau$ values); checking whether inference is robust to alternative standard-error estimators (e.g. nid versus bootstrap); ensuring the model specification is appropriate (functional form, included covariates); considering whether the sample size is sufficient for the quantile levels of interest.

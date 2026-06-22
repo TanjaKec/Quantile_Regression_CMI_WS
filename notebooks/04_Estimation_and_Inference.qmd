@@ -1,0 +1,498 @@
+---
+title: "Estimation and Inference"
+subtitle: "Standard Errors, Confidence Intervals, and Hypothesis Tests"
+author: "Tatjana Kecojević"
+date: last-modified
+
+bibliography: references.bib
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-summary: "Show/Hide Code"
+    smooth-scroll: true
+    page-layout: article
+
+  pdf:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    documentclass: article
+    geometry:
+      - margin=1in
+
+execute:
+  echo: true
+  warning: false
+  message: false
+  freeze: auto
+---
+
+```{r setup}
+#| include: false
+
+library(tidyverse)
+library(quantreg)
+library(AER)
+
+theme_set(theme_minimal())
+
+set.seed(4821)
+
+data(CPS1988)
+
+if (!dir.exists("figures")) dir.create("figures")
+```
+
+# Learning Objectives
+
+By the end of this session you will be able to:
+
+- Explain why standard error estimation in quantile regression is more challenging than in OLS
+- Choose between the three main approaches to standard errors in practice
+- Compute confidence intervals using both bootstrap and sandwich-based standard errors
+- Interpret a confidence interval for a quantile regression coefficient
+- Test whether a slope is the same across different quantile levels
+- Use the coefficient plot as a diagnostic for effect heterogeneity
+
+# Introduction
+
+In Notebook 03 we fitted quantile regression models and produced coefficient tables with standard errors. Those standard errors were computed using the default method, and we noted that bootstrap standard errors are often preferred in practice.
+
+This notebook explains *why* standard error estimation in quantile regression is harder than in OLS, introduces the three main approaches, and shows you how to use them with the **CPS1988** dataset that we will work with throughout the rest of the workshop.
+
+The CPS1988 data contains 28,155 observations from the US Current Population Survey (1988). We model the log of weekly wages as a function of education, experience, and ethnicity.
+
+```{r load-data}
+glimpse(CPS1988)
+```
+
+Our main model throughout this notebook:
+
+```{r main-model}
+formula_wages <- log(wage) ~ education + experience + I(experience^2) + 
+                              ethnicity + smsa
+```
+
+# Why Inference Is Harder in Quantile Regression
+
+## In OLS, precision depends on residual variance
+
+In ordinary least squares, the standard error of a slope estimate depends on:
+
+1. The **spread of the predictor** (more variation in $x$ → more precise)
+2. The **residual variance** $\sigma^2$, how much scatter remains around the fitted line
+
+Both are easy to estimate from the data, which is why OLS standard errors are straightforward.
+
+## In quantile regression, precision depends on local density
+
+In quantile regression, the precision of $\hat{\beta}(\tau)$ depends on something different: how many observations are *near the $\tau$-th quantile of the outcome distribution*.
+
+This is called the **sparsity function**, the reciprocal of the error density evaluated at the quantile of interest:
+
+$$s(\tau) = \frac{1}{f(F^{-1}(\tau))}$$
+
+**In plain English:** if observations are densely packed near the quantile you are estimating, your estimate is precise. If the data are sparse there (few observations near that quantile), your estimate is imprecise.
+
+The figure below shows the density of log wages in the CPS1988 data. Vertical lines mark the 10th, 50th, and 90th percentiles.
+
+```{r fig-sparsity}
+#| fig-width: 8
+#| fig-height: 4
+
+qs <- quantile(log(CPS1988$wage), probs = c(0.10, 0.50, 0.90))
+
+p_sparsity <- ggplot(CPS1988, aes(x = log(wage))) +
+  geom_density(fill = "steelblue", alpha = 0.35, linewidth = 0.8) +
+  geom_vline(xintercept = qs, linetype = "dashed", colour = "tomato", linewidth = 1) +
+  annotate("text",
+           x     = qs + c(0.05, 0.05, 0.05),
+           y     = c(0.55, 0.55, 0.55),
+           label = c("Q10", "Q50", "Q90"),
+           colour = "tomato", hjust = 0, size = 4) +
+  labs(
+    title    = "Density of Log Wages - CPS1988",
+    subtitle = "Dashed lines at the 10th, 50th, and 90th percentiles",
+    x        = "log(wage)",
+    y        = "Density"
+  )
+
+p_sparsity
+
+ggsave(
+  "figures/sparsity_density.png",
+  p_sparsity,
+  width = 8,
+  height = 4,
+  dpi = 300
+)
+```
+
+Notice that the density is **lower** near the 10th percentile than near the median. This means the 10th-quantile regression estimates will generally be less precise than the median regression estimates, even with the same dataset and model. This is the core challenge for inference in quantile regression.
+
+::: {.callout-note}
+## The Sparsity Problem
+
+The accuracy of quantile regression standard errors depends on estimating the local density of the data near the quantile of interest. Where data are sparse (tails of the distribution), standard errors are larger and more sensitive to the estimation method chosen.
+
+This is why the choice of standard error method matters more in quantile regression than in OLS.
+:::
+
+# Three Approaches to Standard Errors
+
+There are three main approaches implemented in R's `quantreg` package:
+
+| Approach | `se =` argument | How it works | When to use |
+|---|---|---|---|
+| **Rank inversion** | `"rank"` (default) | Inverts the rank score process; does not require density estimation | Moderate samples; iid errors |
+| **IID** | `"iid"` | Assumes independent and identically distributed errors | Simple examples and situations where iid assumptions are plausible |
+| **Sandwich (nid)** | `"nid"` | Uses a kernel estimate of the local density; allows heteroscedastic errors | Large samples with non-iid errors |
+| **Bootstrap** | `"boot"` | Resamples $(x_i, y_i)$ pairs; makes no distributional assumptions | **Recommended for applied work** |
+
+::: {.callout-important}
+## Practical Recommendation
+
+For most applied social science work, **bootstrap standard errors (`se = "boot"`) are the safest choice**. They require no assumptions about the error distribution, are robust to heteroscedasticity, and perform well with the large sample sizes typical of survey data.
+
+The main trade-off is computational time: bootstrap requires fitting the model many times (typically `R = 1000` replications). For exploratory work and teaching examples, faster alternatives such as `se = "nid"` are often sufficient.
+:::
+
+## The rank inversion method (default)
+
+When you call `summary(rq(...))` without specifying `se`, R uses the rank inversion method. It produces confidence intervals directly without computing a standard error in the traditional sense:
+
+```{r se-rank}
+fit_median <- rq(formula_wages, data = CPS1988, tau = 0.5)
+summary(fit_median)
+```
+
+The default summary output provides coefficient estimates, standard errors, test statistics, and p-values. The exact method used depends on sample size and the options supplied to `summary.rq()`. For applied work, researchers often explicitly request bootstrap standard errors using `se = "boot"`.
+
+## The bootstrap method
+
+The (x, y) pair bootstrap resamples entire rows of the data with replacement, refits the quantile regression model, and repeats this many times to build up an empirical distribution of the coefficient estimates. Standard errors and confidence intervals are derived from that distribution.
+
+In practice, hundreds or thousands of bootstrap replications may be used. For teaching purposes, we use a smaller number to reduce computation time.
+
+```{r se-boot}
+fit_median_boot <- rq(formula_wages, data = CPS1988, tau = 0.5)
+summary(fit_median_boot, se = "boot", R = 100)
+```
+
+The output now has columns `Value`, `Std. Error`, `t value`, and `Pr(>|t|)`, a format familiar from `lm()`.
+
+::: {.callout-tip}
+## Reading Bootstrap Output
+
+The `Value` column is the point estimate. The `Std. Error` is the bootstrap standard deviation across the `R` replications. A 95% confidence interval is approximately `Value ± 1.96 × Std. Error`.
+:::
+
+# Confidence Intervals in Practice
+
+## Fitting at multiple quantiles
+
+We fit the model at five quantile levels and extract confidence intervals for the education coefficient.
+
+```{r fit-multi}
+#| cache: true
+#| fig-width: 9
+#| fig-height: 7
+
+# Fine grid of quantile levels
+taus <- c(0.10, 0.25, 0.50, 0.75, 0.90)
+
+# Fit separately at each tau and compute confidence intervals
+ci_df <- map_dfr(taus, \(t) {
+  fit <- rq(formula_wages, data = CPS1988, tau = t)
+  s   <- summary(fit, se = "nid") # faster for workshop materials; use se = "boot", R = 1000 for applied research
+  cm  <- s$coefficients
+  tibble(
+    tau   = t,
+    term  = rownames(cm),
+    est   = cm[, "Value"],
+    se    = cm[, "Std. Error"],
+    lower = cm[, "Value"] - 1.96 * cm[, "Std. Error"],
+    upper = cm[, "Value"] + 1.96 * cm[, "Std. Error"]
+  )
+})
+```
+
+## The education coefficient
+
+Let us look at the return to education across the wage distribution:
+
+```{r education-ci}
+edu_df <- ci_df |>
+  filter(term == "education")
+
+edu_df |>
+  select(tau, est, lower, upper) |>
+  mutate(across(c(est, lower, upper), \(x) round(x, 4))) |>
+  rename(`τ` = tau, `Estimate` = est, `Lower 95%` = lower, `Upper 95%` = upper)
+```
+
+## Visualising the confidence intervals
+
+```{r fig-edu-ci}
+#| fig-width: 7
+#| fig-height: 4
+
+ols_edu <- coef(lm(formula_wages, data = CPS1988))["education"]
+
+p_edu_ci <- ggplot(edu_df, aes(x = tau, y = est)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.20, fill = "steelblue") +
+  geom_line(colour = "steelblue", linewidth = 1) +
+  geom_point(colour = "steelblue", size = 2.5) +
+  geom_hline(yintercept = ols_edu, linetype = "dashed",
+             colour = "tomato", linewidth = 0.9) +
+  annotate("text", x = 0.12, y = ols_edu + 0.001,
+           label = "OLS", colour = "tomato", size = 3.5, hjust = 0) +
+  scale_x_continuous(breaks = taus, labels = paste0(taus * 100, "th")) +
+  labs(
+    title    = "Return to Education Across the Wage Distribution",
+    subtitle = "Shaded band = 95% confidence interval   ·   Dashed line = OLS estimate",
+    x        = "Quantile (τ)",
+    y        = "Coefficient on education (log wage units)"
+  )
+
+p_edu_ci
+
+ggsave(
+  "figures/education_coefficient_ci.png",
+  p_edu_ci,
+  width = 7,
+  height = 4,
+  dpi = 300
+)
+```
+
+**Interpretation:** At the 10th quantile of wages, an additional year of education is associated with a `r round(edu_df$est[1], 3)` log-point increase in wages. At the 90th quantile, the return is `r round(edu_df$est[5], 3)` log-points. The OLS estimate of `r round(ols_edu, 3)` falls between these two values, it is an average across the distribution.
+
+The confidence intervals suggest that returns to education increase across the wage distribution, with larger effects observed at higher quantiles.
+
+## Testing Whether Slopes Differ Across Quantiles
+
+The coefficient plot suggests that the return to education may vary across the wage distribution. A formal test allows us to evaluate this statistically.
+
+The key question is:
+
+> Are the regression coefficients the same across quantiles?
+
+If the answer is no, the effect of education differs across the conditional wage distribution, providing evidence of heterogeneous returns.
+
+## The Question
+
+Is the return to education the same for low-wage and high-wage workers?
+
+$$
+H_0: \beta_{\text{education}}(0.10) = \beta_{\text{education}}(0.90)
+$$
+
+versus
+
+$$
+H_1: \beta_{\text{education}}(0.10) \neq \beta_{\text{education}}(0.90)
+$$
+
+A rejection of \(H_0\) provides evidence that the effect of education differs across the wage distribution.
+
+## Using `anova.rq()`
+
+When a model is fitted at multiple quantiles, `anova.rq()` can be used to test whether the regression coefficients are the same across quantile levels.
+
+In our example, the test examines whether the effects of predictors such as education and experience remain constant across the wage distribution.
+
+```{r anova-test}
+fit_joint <- rq(
+  formula_wages,
+  data = CPS1988,
+  tau  = c(0.10, 0.25, 0.50, 0.75, 0.90)
+)
+
+anova(fit_joint)
+```
+
+The null hypothesis is that the coefficients are equal across all specified quantiles.
+
+A small p-value indicates that at least one coefficient differs across quantiles, providing evidence that the relationship varies across the conditional wage distribution.
+
+::: {.callout-important}
+## Interpretation
+
+A small p-value (e.g., p < 0.05) suggests that the effects of one or more predictors are not constant across the outcome distribution.
+
+In other words, the relationship between the predictors and wages changes across quantiles, providing evidence of **heterogeneity** that may be hidden by an OLS model.
+
+A large p-value means we cannot reject the null hypothesis of equal slopes across quantiles. In this case, the effects appear relatively stable across the distribution, and the OLS estimate may provide an adequate summary of the relationship.
+:::
+
+## Testing a Specific Pair of Quantiles
+
+Sometimes we are interested in comparing two particular parts of the distribution rather than testing equality across all quantiles simultaneously.
+
+For example, we may wish to compare the return to education at the 10th and 90th percentiles of the wage distribution:
+
+$$
+H_0:\beta_{\text{education}}(0.10)=\beta_{\text{education}}(0.90)
+$$
+
+against the alternative that the coefficients differ.
+
+We fit the model at the two quantiles and use `anova.rq()` to assess whether the relationship between the predictors and wages differs between the lower and upper ends of the wage distribution:
+
+```{r pairwise-test}
+fit_10_90 <- rq(
+  formula_wages,
+  data = CPS1988,
+  tau = c(0.10, 0.90)
+)
+
+anova(fit_10_90)
+```
+
+A small p-value suggests that the effects differ between the lower and upper ends of the wage distribution. This provides evidence that the relationship is not constant across quantiles and that OLS may conceal important heterogeneity.
+
+::: {.callout-note}
+## Why Compare Quantiles?
+
+Comparing the 10th and 90th percentiles provides a simple way to assess whether a predictor has different effects among lower and higher-outcome individuals.
+
+Large differences between quantiles are often interpreted as evidence of heterogeneous effects.
+:::
+
+# The Coefficient Plot: Your Main Diagnostic
+
+For applied work, the coefficient plot across $\tau$ values is the primary tool for assessing whether quantile regression adds something beyond OLS. Fit the model at a fine grid of quantile levels and plot each coefficient as a function of $\tau$.
+
+::: {.callout-note}
+## Why is $experience^2$ not shown?
+
+The wage model includes both **experience** and **experience²** to allow wages to increase at a decreasing rate over the career.
+
+To keep the coefficient plot readable, we display only the main predictors of substantive interest: education, experience, ethnicity, and metropolitan residence. The quadratic experience term is retained in all models but omitted from the plot.
+:::
+
+```{r fig-coefplot-full}
+#| fig-width: 9
+#| fig-height: 7
+
+# Fine grid of quantile levels
+taus_fine <- c(0.05, 0.10, 0.15, 0.25, 0.50, 0.65, 0.75, 0.90, 0.95)
+
+# OLS estimates for reference
+ols_fit  <- lm(formula_wages, data = CPS1988)
+ols_coef <- coef(ols_fit)
+
+# QR estimates at each tau
+coef_fine <- map_dfr(taus_fine, \(t) {
+  fit <- rq(formula_wages, data = CPS1988, tau = t)
+  s <- summary(fit, se = "nid")  # use se = "boot", R = 1000 for publication-quality inference
+  cm  <- s$coefficients
+  tibble(
+    tau  = t,
+    term = rownames(cm),
+    est  = cm[, "Value"],
+    se   = cm[, "Std. Error"]
+  )
+}) |>
+  mutate(
+    lower = est - 1.96 * se,
+    upper = est + 1.96 * se
+  )
+
+# Terms to display (exclude intercept and experience^2 for space)
+terms_show <- c("education", "experience", "ethnicityafam", "smsayes")
+labels     <- c("Education", "Experience", "Ethnicity\n(African-American)", "Metro area")
+
+p_coefplot <- coef_fine |>
+  filter(term %in% terms_show) |>
+  mutate(term = factor(term, levels = terms_show, labels = labels)) |>
+  ggplot(aes(x = tau, y = est)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.20, fill = "steelblue") +
+  geom_line(colour = "steelblue", linewidth = 0.9) +
+  geom_hline(
+    data = tibble(
+      term  = factor(terms_show, levels = terms_show, labels = labels),
+      ols   = ols_coef[terms_show]
+    ),
+    aes(yintercept = ols),
+    linetype = "dashed", colour = "tomato", linewidth = 0.8
+  ) +
+  facet_wrap(~term, scales = "free_y") +
+  scale_x_continuous(breaks = c(0.10, 0.50, 0.90)) +
+  labs(
+    title    = "Coefficient Plot: CPS1988 Wage Model",
+    subtitle = "Blue = QR estimate with 95% confidence interval · Red dashed = OLS",
+    x        = "Quantile (τ)",
+    y        = "Coefficient"
+  )
+
+p_coefplot
+
+ggsave(
+  "figures/coefficient_process_plot.png",
+  p_coefplot,
+  width = 9,
+  height = 7,
+  dpi = 300
+)
+```
+
+**Reading the plot:**
+
+- **Education:** The return to schooling increases with $\tau$, suggesting that higher earners gain more from each additional year of education. The OLS estimate understates the return at higher quantiles and overstates it at lower quantiles.
+
+- **Experience:** The return to experience declines across the wage distribution. Experience appears to matter more among lower-paid workers, with the effect becoming smaller at higher quantiles. The OLS estimate masks this pattern of heterogeneity.
+
+- **Ethnicity (African-American):** The wage penalty is largest at lower quantiles and becomes smaller toward the upper end of the wage distribution. This suggests that the disadvantage is concentrated among lower-paid workers. The OLS estimate averages over these differences.
+
+- **Metro area:** Living in a metropolitan area is associated with higher wages throughout the distribution. The metropolitan wage premium is positive at all quantiles and appears relatively stable, indicating only modest heterogeneity compared with the other predictors.
+
+::: {.callout-important}
+## When the Coefficient Plot Is Flat
+
+If the quantile regression line is approximately flat and the OLS estimate remains within the confidence band across all values of $\tau$, the effect is **homogeneous**: it does not vary substantially across the distribution. In this case, OLS may provide an adequate summary of the relationship.
+
+If the coefficient changes across quantiles—rising, falling, or exhibiting a non-linear pattern—and the OLS estimate falls outside the confidence band at some values of $\tau$, the effect is **heterogeneous**. In this situation, quantile regression reveals variation that cannot be captured by a single average effect.
+:::
+
+# Putting It Together
+
+A practical workflow for a quantile regression analysis:
+
+1. **Fit the model** at several quantile levels using `rq()` with `tau = c(...)`
+2. **Obtain standard errors and confidence intervals** using either:
+   - `se = "nid"` for fast exploratory analysis and visualisation, or
+   - `se = "boot"` for more robust inference in applied research
+3. **Create a coefficient plot** to examine how effects vary across the outcome distribution
+4. **Formally test homogeneity** using `anova(fit_joint)` when comparing coefficients across quantiles
+5. **Interpret the coefficients substantively**, using the template:
+
+   > *At the $\tau$-th quantile of [outcome], a one-unit increase in [predictor] is associated with a [change] in the conditional $\tau$-th quantile of the outcome, holding other variables constant.*
+
+::: {.callout-important}
+## Key Takeaway
+
+The primary goal of quantile regression is not to determine whether a coefficient is statistically significant at a particular quantile. Rather, it is to understand whether and how relationships differ across the outcome distribution.
+:::
+
+# What Comes Next
+
+In **Notebook 05** we work through a complete applied analysis using the CPS1988 data, covering:
+
+- A full `rq()` workflow from data exploration through model fitting
+- Comparing OLS and quantile regression results side by side
+- Producing and interpreting coefficient plots
+- Communicating quantile regression findings to a non-technical audience
+
+In **Notebook 06** we extend the analysis to address a substantive research question:
+
+> Does the return to education differ between ethnic groups, and does this difference vary across the wage distribution?
+
+This case study brings together all of the concepts introduced in the workshop and demonstrates how quantile regression can be used to investigate heterogeneous effects in practice.
+

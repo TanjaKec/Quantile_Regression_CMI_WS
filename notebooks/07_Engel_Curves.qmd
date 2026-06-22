@@ -1,0 +1,331 @@
+---
+title: "Case Study: Engel Curves and Quantile Regression"
+subtitle: "Workshop Exercise"
+author: "Tatjana Kecojević"
+date: "24 June 2026"
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-summary: "Show/Hide Code"
+    smooth-scroll: true
+    page-layout: article
+ 
+  pdf:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    documentclass: article
+    geometry:
+      - margin=1in
+
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# **Learning Objectives**
+
+By the end of this exercise you will be able to:
+
+- Fit quantile regression models using the Engel dataset
+- Compare OLS and quantile regression estimates
+- Examine how the relationship between income and food expenditure varies across quantiles
+- Construct confidence intervals using `se = "nid"`
+- Interpret a coefficient process plot
+- Write up quantile regression findings in plain language
+
+# **Introduction**
+
+A classic question in economics is:
+
+> How does household food expenditure change as income increases?
+
+The Engel dataset is one of the most famous examples used in the quantile regression literature and is included in the `quantreg` package.
+
+Unlike the CPS1988 wage example, this dataset contains only two variables:
+
+- Household income
+- Household food expenditure
+
+This allows us to focus entirely on understanding quantile regression.
+
+```{r ex0-setup}
+#| include: false
+
+library(tidyverse)
+library(quantreg)
+library(broom)
+
+theme_set(theme_minimal())
+
+data(engel, package = "quantreg")
+```
+
+## Exercise 1: Exploring the Data
+
+Inspect the dataset
+
+```{r ex0-inspect}
+glimpse(engel)
+summary(engel)
+```
+
+**Questions**
+
+1. How many households are included?
+2. Which variable is the outcome?
+3. Which variable is the predictor?
+
+---
+
+## Visualising the Variables
+
+```{r ex1-income}
+ggplot(engel, aes(x = income)) +
+  geom_histogram(bins = 30,
+                 fill = "steelblue",
+                 alpha = 0.7) +
+  labs(
+    title = "Household Income",
+    x = "Income",
+    y = "Count"
+  )
+```
+
+
+```{r ex1-foodexp}
+ggplot(engel, aes(x = foodexp)) +
+  geom_histogram(bins = 30,
+                 fill = "steelblue",
+                 alpha = 0.7) +
+  labs(
+    title = "Household Food Expenditure",
+    x = "Food expenditure",
+    y = "Count"
+  )
+```
+
+**Questions**
+
+1. Is income skewed?
+2. Is food expenditure skewed?
+3. Why might averages be insufficient to describe these distributions?
+
+## Exercise 2: Income and Food Expenditure
+
+```{r ex2-scatter}
+ggplot(
+  engel,
+  aes(
+    x = income,
+    y = foodexp
+  )
+) +
+  geom_point(alpha = 0.5,
+             colour = "steelblue") +
+  labs(
+    title = "Food Expenditure and Household Income",
+    x = "Income",
+    y = "Food expenditure"
+  )
+```
+
+**Questions**
+
+1. Is the relationship positive?
+2. Does variability appear constant across the income range?
+3. Why might quantile regression be useful here?
+
+## Exercise 3: OLS Baseline
+
+```{r ex3-ols}
+ols_fit <- lm(
+  foodexp ~ income,
+  data = engel
+)
+
+summary(ols_fit)
+```
+
+**Questions**
+
+1. What is the coefficient on income?
+2. Interpret the coefficient.
+3. What does OLS tell us about the relationship between income and food expenditure?
+
+## Exercise 4: Median Regression
+
+```{r ex4-median}
+fit_median <- rq(
+  foodexp ~ income,
+  tau = 0.50,
+  data = engel
+)
+
+summary(
+  fit_median,
+  se = "nid"
+)
+
+# Alternative:
+# summary(
+#   fit_median,
+#   se = "boot",
+#   R = 1000
+# )
+```
+
+**Questions**
+
+1. How does the median regression estimate compare with OLS?
+2. Why might the two estimates differ?
+3. What does median regression estimate that OLS does not?
+
+## Exercise 5: Multiple Quantiles
+
+```{r ex5-multi}
+taus <- c(
+  0.10,
+  0.25,
+  0.50,
+  0.75,
+  0.90
+)
+
+fit_multi <- rq(
+  foodexp ~ income,
+  tau = taus,
+  data = engel
+)
+
+coef(fit_multi)
+```
+
+**Questions**
+
+1. Is the income coefficient constant across quantiles?
+2. Which quantile has the largest coefficient?
+3. What does this imply about spending behaviour?
+
+### Formal Test of Equality Across Quantiles
+
+```{r ex5-anova}
+
+anova(fit_multi)
+
+```
+
+**Questions**
+
+4. What is the null hypothesis being tested?
+5. What does the p-value suggest?
+6. Is there evidence that the income effect differs across quantiles?
+
+## Exercise 6: Confidence Intervals
+
+```{r ex6-ci}
+income_df <- map_dfr(taus, \(t){
+
+  fit <- rq(
+    foodexp ~ income,
+    tau = t,
+    data = engel
+  )
+
+  s <- summary(
+    fit,
+    se = "nid"
+  )
+
+  # Alternatives:
+  # s <- summary(fit, se = "boot", R = 50)    # quick experimentation
+  # s <- summary(fit, se = "boot", R = 1000)  # more stable bootstrap inference
+  
+  cm <- s$coefficients
+
+  tibble(
+    tau   = t,
+    est   = cm["income","Value"],
+    lower = cm["income","Value"] -
+      1.96 * cm["income","Std. Error"],
+    upper = cm["income","Value"] +
+      1.96 * cm["income","Std. Error"]
+  )
+})
+
+income_df
+```
+
+**Questions**
+
+1. Are all estimated income effects positive?
+2. How do the confidence intervals change across quantiles?
+3. Do the intervals suggest that the effect of income is constant?
+4. Why are confidence intervals useful when interpreting quantile regression results?
+
+## Exercise 7: Coefficient Plot
+
+```{r ex7-plot}
+ols_income <- coef(ols_fit)["income"]
+
+ggplot(
+  income_df,
+  aes(
+    x = tau,
+    y = est
+  )
+) +
+  geom_ribbon(
+    aes(
+      ymin = lower,
+      ymax = upper
+    ),
+    alpha = 0.20,
+    fill = "steelblue"
+  ) +
+  geom_line(
+    colour = "steelblue",
+    linewidth = 1
+  ) +
+  geom_point(
+    colour = "steelblue",
+    size = 2.5
+  ) +
+  geom_hline(
+    yintercept = ols_income,
+    linetype = "dashed",
+    colour = "tomato"
+  ) +
+  labs(
+    title = "Income Effect Across Quantiles",
+    subtitle = "Blue = Quantile Regression · Red dashed = OLS",
+    x = "Quantile (τ)",
+    y = "Coefficient on income"
+  )
+```
+
+**Questions**
+
+1. What pattern do you observe?
+2. Does the effect of income appear constant?
+3. Does OLS adequately summarise the relationship?
+
+## Exercise 8: Interpretation
+
+Complete the following paragraph.
+
+At the 10th quantile, an additional unit of income is associated with approximately _____ additional units of food expenditure. At the 90th quantile, the corresponding estimate is _____. This suggests that ________________________________________. The OLS estimate of _____ provides _____________________________________________.
+
+---
+
+**Reflection**
+
+1. What did quantile regression reveal that OLS could not?
+2. Which result was most surprising?
+3. In what other applications might quantile regression be useful?

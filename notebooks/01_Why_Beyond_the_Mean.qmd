@@ -1,0 +1,401 @@
+---
+title: "Why Beyond the Mean?"
+subtitle: "Introduction to Quantile Regression"
+author: "Tatjana Kecojević"
+date: last-modified
+
+bibliography: references.bib
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-summary: "Show/Hide Code"
+    smooth-scroll: true
+    page-layout: article
+
+  pdf:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    documentclass: article
+    geometry:
+      - margin=1in
+
+execute:
+  echo: true
+  warning: false
+  message: false
+  freeze: false
+---
+
+
+```{r setup}
+#| include: false
+
+library(tidyverse)
+library(dtplyr)
+library(ISLR)
+
+theme_set(theme_minimal())
+
+set.seed(123)
+```
+
+# Learning Objectives
+
+By the end of this session you will be able to:
+
+- Explain what OLS estimates
+- Describe situations where mean effects may be insufficient
+- Interpret quantiles and conditional quantiles
+- Explain the motivation for quantile regression
+
+# Introduction
+
+Regression models are among the most widely used statistical tools in the social sciences. Researchers routinely use regression analysis to investigate relationships between variables, test theoretical expectations, and estimate the effects of social, economic, and demographic factors on a wide range of outcomes.
+
+In many applications, researchers are interested in questions such as:
+
+- What is the relationship between education and earnings?
+
+- How does socioeconomic status affect health outcomes?
+
+- Do neighbourhood characteristics influence housing prices?
+
+- Does parental background affect children's educational attainment?
+
+The most common approach for addressing these questions is **Ordinary Least Squares (OLS)** regression.
+
+OLS provides a useful summary of the relationship between predictors and outcomes by focusing on the **conditional mean** of the outcome variable. However, many substantive research questions extend beyond average effects.
+
+For example, the effect of education on wages may differ between low-income and high-income individuals. Similarly, housing characteristics may matter differently for inexpensive and expensive properties. In such situations, focusing exclusively on the average effect may conceal important forms of heterogeneity.
+
+This workshop introduces **quantile regression**, a method that allows researchers to examine relationships across different points of an outcome distribution rather than focusing solely on the mean.
+
+# Why Do We Use Regression?
+
+Regression analysis helps researchers answer questions about relationships between variables.
+
+More specifically, regression models are commonly used to:
+
+1. Describe associations between variables;
+2. Estimate the magnitude of relationships;
+3. Test hypotheses derived from theory;
+4. Predict outcomes for different groups or individuals.
+
+Consider a simple example examining the relationship between years of education and hourly wages.
+
+A scatterplot of the data might suggest that individuals with more education tend to earn higher wages. Regression analysis provides a formal framework for summarising this relationship.
+
+## A Simple Regression Model
+
+Suppose we model wages as a function of years of education:
+
+$$wage_i=\beta_0+\beta_1 education_i+\varepsilon_i$$
+
+The coefficient $\beta_1$ represents the expected change in wages associated with an additional year of education.
+
+The question is: **what exactly does OLS estimate?**
+
+# What Does OLS Actually Estimate?
+
+Although OLS is often described as estimating the relationship between X and Y, this description is incomplete.
+
+More precisely, OLS estimates the **conditional mean** of the outcome variable given a set of predictors.
+
+$$E(Y\mid X)$$
+
+This notation can be read as:
+
+> The expected value (or average) of Y for a given value of X.
+
+For example, if Y represents wages and X represents education, OLS estimates the average wage associated with different levels of education.
+
+Importantly, OLS does **not** tell us how education affects individuals at different parts of the wage distribution.
+
+Instead, it provides a single summary of the relationship based on the conditional mean.
+
+## Visualising the Conditional Mean
+
+Imagine observing the wages of individuals with 16 years of education.
+
+Some individuals earn relatively low wages, some earn average wages, and others earn very high wages.
+
+OLS focuses on the centre of this distribution by estimating the conditional mean wage.
+
+This approach is appropriate when the mean adequately summarises the relationship of interest.
+
+But does it always?
+
+# Looking Beyond the Mean
+
+To understand why average effects may be insufficient, it is useful to think about the entire distribution of an outcome rather than focusing only on its centre.
+
+Suppose we observe the distribution of wages among individuals with similar levels of education.
+
+Some individuals earn relatively low wages, others earn average wages, and some earn very high wages. Together, these observations form a distribution rather than a single value.
+
+OLS summarises this distribution using one quantity: the conditional mean.
+
+While this summary is often useful, it ignores how observations are distributed around the mean.
+
+Two groups may have the same average wage but very different distributions of wages.
+
+Likewise, a predictor may have little effect on average while having substantial effects for some parts of the distribution.
+
+## Same Mean, Different Distributions
+
+The mean is often a useful summary of a distribution, but it does not tell us how observations are distributed around that mean.
+
+The figure below shows two groups with very similar average wages. Despite having similar means, the distributions are quite different.
+
+One group is concentrated around the mean, whereas the other contains two distinct clusters of observations.
+
+Although the average wage is similar in both groups, the underlying distributions tell very different stories.
+
+```{r fig1-SameMeanDifferentDistributions}
+group_a <- rnorm(1000, mean = 20, sd = 3)
+group_b <- c(
+  rnorm(500, mean = 14, sd = 2),
+  rnorm(500, mean = 26, sd = 2)
+)
+wage_df <- tibble(
+  wage = c(group_a, group_b),
+  group = rep(c("A", "B"), each = 1000)
+)
+
+means <- wage_df %>%
+  group_by(group) %>%
+  summarise(mean_wage = mean(wage))
+
+plot_1 <- wage_df %>%
+  ggplot(aes(x = wage, fill = group)) +
+  geom_density(alpha = .5) +
+  geom_vline(
+    data = means,
+    aes(xintercept = mean_wage),
+    linetype = "dashed"
+  ) +
+  geom_text(
+    data = means,
+    aes(
+      x = mean_wage,
+      y = 0.14,
+      label = paste0("Mean = ", round(mean_wage, 1))
+    ),
+    inherit.aes = FALSE,
+    size = 4
+  ) +
+  facet_wrap(~group) +
+  labs(
+    title = "Same Mean, Different Distributions",
+    subtitle = "Both groups have approximately the same mean wage, but very different distributions",
+    x = "Hourly wage",
+    y = "Density",
+    caption = "Dashed vertical lines indicate the group means."
+  ) +
+  theme_minimal() +
+  theme(
+    plot.caption = element_text(hjust = 0.5)
+  )
+
+plot_1
+
+ggsave(
+  "figures/education_wages_scatter.png",
+  plot = plot_1,
+  width = 7,
+  height = 5
+)
+```
+
+If we focused only on the mean, we might conclude that the two groups are very similar. However, the distributions reveal important differences that are completely hidden by the average. This simple example illustrates a key limitation of mean-based analyses: different distributions can produce similar average values.
+
+For many social science questions, these distributional differences are precisely what researchers wish to understand.
+
+Understanding these differences requires us to examine the distribution itself.
+
+## An Illustrative Example
+
+Suppose policymakers are considering two different approaches to raising workers’ wages.
+
+The first is a **universal wage subsidy**, where every worker receives an additional £2 per hour regardless of their current wage.
+
+The second is a **performance-based bonus scheme**, where higher-paid workers receive larger increases while lower-paid workers receive smaller increases.
+
+At first glance, these policies appear quite different. However, imagine that both policies increase the **average wage** by exactly the same amount: approximately £2 per hour.
+
+If we evaluated these policies using OLS, we would focus on the change in the mean wage. From this perspective, the two policies would appear to be equally effective because both increase average wages from roughly £20 to £22 per hour. 
+
+Although both policies increase average wages by the same amount, the figure below shows that they affect the wage distribution differently. The accompanying table reports the average wage under each scenario.
+
+```{r fig2-PolicyComparison}
+
+# Baseline wages
+baseline <- rnorm(2000, mean = 20, sd = 5)
+
+# Policy A: everyone gains £2
+policy_a <- baseline + 2
+
+# Policy B: gains concentrated among higher earners
+bonus <- scales::rescale(
+  baseline,
+  to = c(-1, 5)
+)
+
+# Force average gain to remain exactly £2
+bonus <- bonus - mean(bonus) + 2
+
+policy_b <- baseline + bonus
+
+policy_df <- tibble(
+  wage = c(baseline, policy_a, policy_b),
+  policy = rep(
+    c("Baseline", "Policy A", "Policy B"),
+    each = length(baseline)
+  )
+)
+
+policy_means <- policy_df %>%
+  group_by(policy) %>%
+  summarise(mean_wage = mean(wage))
+
+plot_2 <- ggplot(policy_df,
+       aes(x = wage,
+           fill = policy)) +
+
+  geom_density(
+    alpha = .45,
+    linewidth = 1.2
+  ) +
+
+  geom_vline(
+    data = policy_means,
+    aes(xintercept = mean_wage,
+        colour = policy),
+    linetype = "dashed",
+    linewidth = 1
+  ) +
+
+  scale_fill_manual(
+    values = c(
+      "Baseline" = "grey60",
+      "Policy A" = "#1B9E77",
+      "Policy B" = "#D95F02"
+    )
+  ) +
+
+  scale_colour_manual(
+    values = c(
+      "Baseline" = "grey40",
+      "Policy A" = "#1B9E77",
+      "Policy B" = "#D95F02"
+    )
+  ) +
+
+  labs(
+    title = "Identical Mean Effects, Different Distributional Effects",
+    subtitle = "Both policies increase average wages by £2 per hour",
+    x = "Hourly wage",
+    y = "Density",
+    caption = "Dashed lines indicate group means."
+  ) +
+
+  theme_minimal(base_size = 13) +
+  theme(
+    legend.position = "bottom",
+    plot.caption = element_text(hjust = 0.5),
+    plot.title = element_text(face = "bold")
+  )
+
+plot_2
+
+ggsave(
+  "figures/same_mean_different_distributions.png",
+  plot = plot_2,
+  width = 7,
+  height = 5
+)
+
+policy_means
+
+```
+Notice that both policies increase the average wage from approximately £20 to £22 per hour. Based on the mean alone, the two policies appear to have identical effects. However, the figure tells a different story.
+
+- The grey distribution represents wages before either policy is introduced.
+- The green distribution shows the effect of the universal wage subsidy. The entire distribution shifts to the right because all workers receive the same increase.
+- The orange distribution shows the effect of the performance-based bonus scheme. Average wages increase by the same amount, but the gains are concentrated among workers who were already earning relatively high wages.
+
+As a result, both policies produce the same average effect, but they affect workers very differently. 
+
+- A researcher interested only in average wages would conclude that the two policies are equivalent. 
+- A researcher interested in inequality, wage dispersion, or the experiences of lower-paid workers would likely reach a very different conclusion.
+
+This example illustrates an important limitation of mean-based analyses. The mean tells us whether outcomes increase on average, but it does not tell us who benefits from those increases. To understand how effects vary across an outcome distribution, we need methods that look beyond the conditional mean. Quantile regression provides one such approach.
+
+# Introducing Quantiles
+
+If the mean does not provide a complete description of a distribution, how can we learn more about the distribution itself?
+
+One useful approach is to examine quantiles.
+
+Quantiles divide a distribution into ordered parts and describe the location of observations within that distribution.
+
+The most familiar quantile is the median, which corresponds to the 50th percentile.
+
+The median identifies the value below which 50% of observations fall and above which the remaining 50% lie.
+
+More generally:
+
+- The 25th percentile is the value below which 25% of observations fall.
+- The 50th percentile is the median.
+- The 75th percentile is the value below which 75% of observations fall.
+
+Unlike the mean, quantiles allow us to describe different parts of a distribution separately.
+
+This provides a richer picture of how outcomes are distributed across a population.
+
+```{r fig3-QuantilesOnWageDistribution}
+qs <- quantile(
+  Wage$wage,
+  probs = c(.25, .50, .75)
+)
+
+plot_3 <- ggplot(Wage, aes(x = wage)) +
+  geom_density(
+    fill = "steelblue",
+    alpha = .4
+  ) +
+  geom_vline(
+    xintercept = qs,
+    colour = "red",
+    linetype = "dashed",
+    linewidth = 1
+  ) +
+  labs(
+    title = "Quantiles Divide a Distribution",
+    subtitle = "The dashed lines indicate the 25th, 50th, and 75th percentiles",
+    x = "Hourly wage",
+    y = "Density"
+  )
+
+plot_3
+
+ggsave(
+  "figures/quantiles_divide_distribution.png",
+  plot = plot_3,
+  width = 7,
+  height = 5
+)
+```
+
+The dashed lines divide the wage distribution into different regions. The first line marks the 25th percentile, the second marks the median (50th percentile), and the third marks the 75th percentile. By examining these locations separately, we can begin to understand how outcomes differ across the distribution rather than focusing solely on the average outcome. This idea forms the foundation of quantile regression. Instead of modelling only the conditional mean, quantile regression allows us to model different points of the conditional distribution [@koenker1978].
+
+# References
+
+::: {#refs}
+:::

@@ -1,0 +1,345 @@
+---
+title: "Case Study: Education, Ethnicity and Wages"
+subtitle: "Afternoon Exercise Workbook"
+author: "Tatjana Kecojević"
+date: "24 June 2026"
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-summary: "Show/Hide Code"
+    smooth-scroll: true
+    page-layout: article
+    
+  pdf:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    documentclass: article
+    geometry:
+      - margin=1in
+
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Welcome to the Afternoon Session
+
+This workbook guides you through a complete quantile regression analysis using real data. Work through the exercises in order, each one builds on the previous.
+
+**The research question:**
+
+> *Does the return to education differ between low and high earners? Is the ethnic wage gap uniform across the earnings distribution, or is it larger at the bottom?*
+
+These are questions that OLS regression cannot fully answer. By the end of this session you will have answered both using quantile regression.
+
+**Data:** `CPS1988`, 28,155 male workers from the US Current Population Survey, 1988.
+
+**Model:** We model the log of weekly wages as a function of education, experience, and demographic characteristics.
+
+---
+
+# Block 1: Setup and Data Exploration
+
+## Exercise 0: Setup
+
+Load the packages you will need for today's analysis. The four key packages are `quantreg` (for quantile regression), `AER` (for the CPS1988 dataset), `tidyverse` (for data wrangling and plotting), and `broom` (for tidying model output).
+
+```{r ex0-setup}
+#| eval: false
+
+# Load packages
+
+
+# Load the CPS1988 dataset
+
+
+```
+
+Now inspect the data. How many rows and columns does it have? What are the variable names and their types?
+
+```{r ex0-inspect}
+#| eval: false
+
+# Inspect the structure of CPS1988
+
+
+# Print a summary of all variables
+
+
+```
+
+**Questions:**
+
+1. How many observations are in the dataset?
+2. Which variables are numeric and which are categorical?
+3. Are there any missing values? (*Hint:* use `is.na()`)
+
+---
+
+## Exercise 1: Explore the Outcome Variable
+
+The outcome we want to model is **weekly wages**. Before fitting any model, explore its distribution.
+
+```{r ex1-wage-dist}
+#| eval: false
+
+# Plot a histogram of wage on its original scale
+
+
+# Now plot a histogram of log(wage)
+
+
+```
+
+**Questions:**
+
+1. How would you describe the shape of the wage distribution?
+2. What happens to the shape when you apply the log transformation?
+3. Why is it standard practice to model log wages rather than wages directly?
+
+Now explore the relationship between wages and education, coloured by ethnicity.
+
+```{r ex1-scatter}
+#| eval: false
+
+# Scatterplot of log(wage) vs education, coloured by ethnicity
+# Hint: use geom_point() with colour = ethnicity, then add geom_smooth()
+
+
+```
+
+**Questions:**
+
+4. Do workers with more education tend to earn more? Does the relationship look linear?
+5. Does the wage–education relationship appear to differ between ethnic groups?
+
+---
+
+# Block 2: OLS Baseline
+
+## Exercise 2: Fit an OLS Model
+
+Fit an ordinary least squares regression of log wages on education, experience (including a squared term), ethnicity, and whether the worker lives in a metropolitan area. This gives us our baseline to compare against.
+
+```{r ex2-ols}
+#| eval: false
+
+# Define the model formula
+formula_wages <- log(wage) ~ education + experience + I(experience^2) + 
+                              ethnicity + smsa
+
+# Fit the OLS model
+
+
+# Print a summary
+
+
+```
+
+**Questions:**
+
+1. What is the estimated return to an additional year of education? Interpret this coefficient in plain language.
+2. How much less do African-American workers earn compared with otherwise similar Caucasian workers? Express this as a percentage.
+3. Is the coefficient on `I(experience^2)` positive or negative? What does this imply about the shape of the experience–wage relationship?
+
+Now plot the OLS residuals against the fitted values.
+
+```{r ex2-residuals}
+#| eval: false
+
+# Residuals vs fitted values plot
+
+
+```
+
+**Questions:**
+
+4. Do the residuals appear to have constant variance (homoscedasticity), or does the spread change with the fitted values?
+5. What does this suggest about whether a single mean regression line is adequate?
+
+---
+
+# Block 3: Median Regression
+
+## Exercise 3: Fit Median Regression ($\tau = 0.5$)
+
+Now fit quantile regression at the **median** ($\tau = 0.5$) using `rq()`. Use the same formula as the OLS model.
+
+```{r ex3-median}
+#| eval: false
+
+# Fit median regression
+
+
+# Print a summary with bootstrap standard errors
+
+
+```
+
+**Questions:**
+
+1. What is the estimated return to education from median regression? Is it higher or lower than the OLS estimate?
+2. What does it mean to estimate the *conditional median* rather than the *conditional mean*?
+3. Would you expect OLS and median regression to agree more closely on a symmetric distribution or a skewed one? Why?
+
+Now compare the education coefficient from OLS and median regression side by side.
+
+```{r ex3-compare}
+#| eval: false
+
+# Extract and compare the education coefficients from both models
+# Hint: use coef() on each model
+
+
+```
+
+---
+
+# Block 4: Multiple Quantiles
+
+## Exercise 4: Fit Models Across Quantiles
+
+Fit quantile regression at five quantile levels: $\tau \in \{0.10, 0.25, 0.50, 0.75, 0.90\}$.
+
+```{r ex4-multi}
+#| eval: false
+
+# Define the quantile levels
+taus <- c(0.10, 0.25, 0.50, 0.75, 0.90)
+
+# Fit rq() with tau = taus
+
+
+# Extract the coefficient matrix
+
+
+```
+
+Now tabulate the education coefficient across quantile levels.
+
+```{r ex4-edu-table}
+#| eval: false
+
+# Extract the education coefficient at each tau
+# Hint: use map_dfr() over taus, fitting rq() and pulling the education row
+
+
+```
+
+**Questions:**
+
+1. Does the return to education increase, decrease, or remain constant as $\tau$ increases from 0.10 to 0.90?
+2. What does this imply about who benefits most from additional years of schooling?
+3. The OLS estimate falls somewhere in this range. Does it overestimate or underestimate the return for low earners? For high earners?
+
+---
+
+## Exercise 5: The Ethnicity Gap Across the Distribution
+
+Now focus on the **ethnicity coefficient** across quantile levels. Extract and display it the same way you did for education.
+
+```{r ex5-ethnicity}
+#| eval: false
+
+# Extract the ethnicity (African-American) coefficient at each tau
+
+
+```
+
+**Questions:**
+
+1. Is the wage gap larger or smaller at lower quantiles compared with higher quantiles?
+2. What does this imply about *where* in the distribution the wage penalty falls most heavily?
+3. The OLS estimate gives one number for the wage gap. Does it capture what is happening at the bottom of the distribution? At the top?
+4. What policy implication might follow from this finding?
+
+---
+
+# Block 5: Visualisation
+
+## Exercise 6: Quantile Lines on a Scatterplot
+
+Plot `log(wage)` against `education` and overlay both the OLS regression line and quantile regression lines at $\tau \in \{0.10, 0.25, 0.50, 0.75, 0.90\}$. Colour-code the quantile lines.
+
+*Hint:* The quantile lines are straight lines, use `geom_abline()` with the intercept and slope from each fitted model. The OLS line can be added with `geom_smooth(method = "lm")`.
+
+```{r ex6-qr-lines}
+#| eval: false
+
+# Extract intercept and slope for each tau
+# Hint: map_dfr() over taus, rq() on education only (for a clean visualisation)
+
+
+# Build the scatterplot with overlaid lines
+
+
+```
+
+**Questions:**
+
+1. What does it mean that the quantile lines are not parallel?
+2. Which quantile line is steepest? Which is shallowest?
+3. How does the fan of lines change as education increases?
+
+---
+
+## Exercise 7: Coefficient Plot Across Quantiles
+
+The **coefficient plot** is the key diagnostic in quantile regression analysis. Plot the education slope coefficient as a function of $\tau$, with a 95% bootstrap confidence band and a horizontal reference line for the OLS estimate.
+
+```{r ex7-coefplot}
+#| eval: false
+
+# Compute bootstrap confidence intervals at each tau
+# Hint: summary(rq_fit, se = "boot", R = 1000)$coefficients
+
+
+# Build the coefficient plot
+
+
+```
+
+**Questions:**
+
+1. Is the line flat or does it trend upward/downward?
+2. Does the OLS estimate (dashed line) fall within the confidence band at all quantile levels? What does it mean when it does not?
+3. If you could only report one number for the return to education, which would you choose, the OLS estimate, the median regression estimate, or something else? Justify your answer.
+
+---
+
+# Block 6: Wrap-Up
+
+*These questions do not require any code. Write your answers directly in the cells below.*
+
+**1.** In two or three sentences, summarise the main finding about the return to education across the wage distribution.
+
+*Your answer:*
+
+---
+
+**2.** In two or three sentences, summarise the main finding about the ethnicity wage gap.
+
+*Your answer:*
+
+---
+
+**3.** Thinking about your own research: is there a variable in your field where you would expect the effect to differ across the distribution of the outcome? What would the coefficient plot look like if your hypothesis were correct?
+
+*Your answer:*
+
+---
+
+**4.** What is the most important thing you would check before reporting quantile regression results from your own data?
+
+*Your answer:*
+
+---
+
+*End of exercises. Well done!*
