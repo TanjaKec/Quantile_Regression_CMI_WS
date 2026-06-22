@@ -1,0 +1,293 @@
+---
+title: "Why Beyond the Mean?"
+subtitle: "Introduction to Quantile Regression"
+author: "Tatjana Kecojević"
+date: "24 June 2026"
+
+format:
+  revealjs:
+    theme: serif
+    slide-number: true
+    logo: UoM_logos/UoM_logo_TAB_col_white_background.png
+    title-slide: false
+editor: visual
+---
+
+# Learning Objectives
+
+By the end of this session you will be able to:
+
+- Explain what OLS estimates
+- Describe situations where mean effects may be insufficient
+- Interpret quantiles and conditional quantiles
+- Explain the motivation for quantile regression
+
+------------------------------------------------------------------------
+
+## Why Do We Use Regression?
+
+Researchers often ask:
+
+- Does education increase earnings?
+- How does socioeconomic status affect health?
+- Do neighbourhood characteristics influence housing prices?
+- Does parental background affect educational attainment?
+
+Regression provides a framework for answering these questions.
+
+------------------------------------------------------------------------
+
+## What Does Regression Allow Us to Do?
+
+Regression models help researchers to:
+
+- Describe relationships between variables
+- Estimate the magnitude of effects
+- Test theoretical expectations
+- Predict outcomes
+
+Regression is one of the most widely used tools in social science research.
+
+------------------------------------------------------------------------
+
+## Regression in Social Science Research
+
+Regression models are among the most widely used statistical tools in the social sciences.
+
+Researchers routinely use regression analysis to:
+
+- Investigate relationships between variables
+- Test theoretical expectations
+- Estimate the effects of social, economic and demographic factors
+- Predict outcomes for different groups and individuals
+
+------------------------------------------------------------------------
+
+## Ordinary Least Squares (OLS)
+
+The most common approach for analysing relationships between variables is:
+
+### Ordinary Least Squares Regression
+
+OLS provides a useful summary of the relationship between predictors and outcomes by focusing on the **conditional mean** of the outcome variable.
+
+------------------------------------------------------------------------
+
+## A Simple Regression Model
+
+Suppose we model wages as a function of years of education:
+
+$$wage_i = \beta_0 + \beta_1 education_i + \varepsilon_i$$
+
+The coefficient $\beta_1$ represents the expected change in wages associated with an additional year of education.
+
+### What exactly does OLS estimate?
+
+------------------------------------------------------------------------
+
+## What Does OLS Actually Estimate?
+
+OLS is often described as estimating the relationship between X and Y.
+
+More precisely, OLS estimates:
+
+$$E(Y|X)$$
+
+the **conditional mean** of the outcome variable given a set of predictors.
+
+------------------------------------------------------------------------
+
+## Why Is the Mean Useful?
+
+The conditional mean provides a convenient summary of the relationship between predictors and outcomes.
+
+For many research questions, the average effect is exactly what we want to know.
+
+OLS is therefore an extremely valuable and widely used method.
+
+------------------------------------------------------------------------
+
+## The Conditional Mean
+
+For example:
+
+- \(Y\) = hourly wage
+- \(X\) = years of education
+
+OLS estimates:
+
+$$E(Wage|Education)$$
+
+the average wage associated with different levels of education.
+
+------------------------------------------------------------------------
+
+## But Is the Mean Always Enough?
+
+OLS summarises the relationship between variables using a single average effect.
+
+However, many social science questions involve heterogeneity. For example:
+
+- Does education benefit low earners and high earners equally?
+- Do policies affect everyone in the same way?
+- Are some groups affected more than others?
+
+To answer these questions, we may need to look beyond the mean.
+
+------------------------------------------------------------------------
+
+## Same Mean, Different Distributions
+
+![](figures/same_mean_different_distributions.png)
+
+Two groups can have approximately the same mean wage but very different distributions.
+
+------------------------------------------------------------------------
+
+## What Do We Learn?
+
+Both groups have very similar average wages.
+
+However:
+
+- Group A is concentrated around the mean.
+- Group B contains two distinct clusters of workers.
+
+The mean captures only one aspect of a distribution.
+
+------------------------------------------------------------------------
+
+## Why Does This Matter?
+
+Focusing only on averages can hide:
+
+- Inequality
+- Dispersion
+- Distributional differences
+- Heterogeneous effects
+
+The mean is only one feature of a distribution.
+
+------------------------------------------------------------------------
+
+## An Illustrative Example
+
+Suppose policymakers are considering two policies designed to increase wages.
+
+Both policies raise average wages by approximately:
+
+### £2 per hour
+
+Would we conclude that they have the same effect?
+
+------------------------------------------------------------------------
+
+## Identical Mean Effects, Different Distributional Effects
+
+![](figures/policy_comparison.png)
+
+Both policies increase average wages by approximately £2 per hour.
+
+------------------------------------------------------------------------
+
+## Interpreting the Policy Example
+
+Although average wages increase by the same amount:
+
+- Policy A benefits workers relatively evenly.
+- Policy B concentrates gains among higher-paid workers.
+
+The distributional consequences differ substantially.
+
+### Who benefits matters.
+
+------------------------------------------------------------------------
+
+## Looking Beyond Averages
+
+To understand these differences we need tools that describe:
+
+- Lower outcomes
+- Middle outcomes
+- Upper outcomes
+
+separately.
+
+This motivates the use of quantiles.
+
+------------------------------------------------------------------------
+
+## What Is a Quantile?
+
+A quantile divides a distribution into ordered parts.
+
+Common examples include:
+
+- 25th percentile
+- 50th percentile (median)
+- 75th percentile
+
+------------------------------------------------------------------------
+
+## Quantiles Divide a Distribution
+
+![](figures/quantiles_divide_distribution.png)
+
+The dashed lines indicate the 25th, 50th and 75th percentiles.
+
+------------------------------------------------------------------------
+
+## Why Quantiles?
+
+Quantiles allow us to examine:
+
+- Lower parts of the distribution
+- The centre of the distribution
+- Upper parts of the distribution
+
+separately.
+
+They provide a richer description than the mean alone.
+
+------------------------------------------------------------------------
+
+## Conditional Quantiles
+
+OLS estimates:
+
+$$E(Y|X)$$
+
+Quantile regression estimates:
+
+$$Q_{\tau}(Y|X)$$
+
+where $(\tau)$ identifies a particular quantile.
+
+------------------------------------------------------------------------
+
+## Why Quantile Regression?
+
+Quantile regression allows us to ask:
+
+- Does education matter more for low earners?
+- Does education matter more for high earners?
+- Who benefits the most?
+- Who benefits the least?
+
+------------------------------------------------------------------------
+
+## Key Takeaways
+
+- OLS estimates conditional means.
+- Mean effects may conceal important heterogeneity.
+- Similar means can correspond to very different distributions.
+- Quantiles describe different parts of a distribution.
+- Quantile regression allows us to move beyond the mean.
+
+------------------------------------------------------------------------
+
+## Next Section
+
+### Quantiles and Conditional Quantiles
+
+From averages to distributions.

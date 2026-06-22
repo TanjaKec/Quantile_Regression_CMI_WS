@@ -1,0 +1,332 @@
+---
+title: "Quantile Regression in R"
+subtitle: "Estimation, Visualisation and Interpretation"
+author: "Tatjana Kecojević"
+date: "24 June 2026"
+
+bibliography: references.bib
+
+format:
+  revealjs:
+    theme: serif
+    slide-number: true
+    transition: fade
+    background-transition: fade
+    footer: "Beyond the Mean · Tatjana Kecojević"
+    logo: "UoM_logos/UoM_logo_TAB_col_white_background.png"
+    smaller: false
+    scrollable: false
+    code-fold: true
+    code-summary: "Show code"
+    highlight-style: github
+    fig-align: center
+
+execute:
+  echo: true
+  warning: false
+  message: false
+  freeze: false
+---
+
+```{r setup}
+#| include: false
+
+library(tidyverse)
+library(quantreg)
+library(AER)
+
+theme_set(theme_minimal(base_size = 14))
+
+set.seed(4821)
+
+check_fn <- function(u, tau) u * (tau - as.numeric(u < 0))
+taus <- c(0.10, 0.25, 0.50, 0.75, 0.90)
+```
+
+# Part 5 {background-color="#2C3E50"}
+
+---
+
+**Learning Objectives**:    
+
+::: incremental
+- Load and explore the CPS1988 dataset
+- Fit an OLS baseline model for log wages
+- Compare OLS and median regression estimates
+- Fit quantile regression models using `rq()`
+- Interpret confidence intervals and coefficient plots
+- Describe how the return to education varies across the wage distribution
+- Describe how the ethnicity wage gap varies across the wage distribution
+- Interpret and communicate quantile regression results
+:::
+
+## The CPS1988 Dataset
+
+Throughout this session we use the: <span style="color:#1f77b4;">CPS1988 Dataset</span>
+
+The data contain information on:
+
+- hourly wages
+- education
+- labour market experience
+- ethnicity
+- demographic characteristics
+
+Our goal is to examine how these factors relate to wages across the distribution.
+
+## Exploring the Wage Distribution
+
+![](figures/wage_histograms.png)
+
+## Why Log Wages?
+
+- Weekly wages are strongly right-skewed.
+- A small number of high earners create a long upper tail.
+- Log wages are more symmetric.
+- We therefore model log wages rather than wages in levels.
+
+This is a reason why labour economists often model log wages rather than wages in levels.
+
+---
+
+## Wages by Ethnicity
+
+![](figures/wage_ethnicity_density.png)
+
+**Wage differences appear across the entire distribution.**
+
+## Education and Experience
+
+![](figures/wage_scatterplots.png)
+
+**Education and experience are both associated with wages.**
+
+## An OLS Baseline Model
+
+Before fitting quantile regression models, we begin with a standard OLS specification.
+
+$$
+\begin{aligned}
+\log(wage_i) =\;& \beta_0 +
+\beta_1 education_i \\
+&+ \beta_2 experience_i \\
+&+ \beta_3 experience_i^2 \\
+&+ \beta_4 ethnicity_i \\
+&+ \varepsilon_i
+\end{aligned}
+$$
+
+OLS estimates the average relationship between predictors and log wages.
+
+---
+
+## OLS Results
+
+OLS estimates the average association between predictors and log wages.
+
+Key findings:
+
+- More education is associated with higher wages.
+- Experience is positively related to wages.
+- Wage growth slows at higher levels of experience.
+- A wage gap remains after controlling for education and experience.
+
+OLS provides a useful summary of average effects.
+
+Do average effects tell the whole story?
+
+---
+
+## Moving Beyond the Mean
+
+OLS estimates: $E(Y|X)$
+
+Quantile regression allows us to estimate: $Q_\tau(Y|X)$
+
+different points of the conditional wage distribution.
+
+This lets us ask:
+
+::: incremental
+- Is the return to education larger among high earners?
+- Does the ethnicity wage gap vary across the distribution?
+- Are effects concentrated at the top or bottom of the wage distribution?
+:::
+
+---
+
+## Median Regression
+
+The median regression model estimates the conditional median:
+
+$$
+Q_{0.5}(Y|X)
+$$
+
+rather than the conditional mean.
+
+It is the simplest quantile regression model and provides a useful comparison with OLS.
+
+---
+
+## Beyond the Median
+
+Median regression focuses on the 50th percentile.
+
+Quantile regression generalises this idea by allowing us to estimate:
+
+$$
+Q_{\tau}(Y|X)
+$$
+
+for different values of $\tau$.
+
+Common choices are: $\tau = 0.10$, $\tau = 0.25$, $\tau = 0.50$, $\tau = 0.75$, $\tau = 0.90$
+
+Together these provide a more complete picture of the conditional wage distribution.
+
+---
+
+## Quantile Regression Models
+
+We estimate wage equations at several quantiles:
+
+$$
+\tau = 0.10,\;0.25,\;0.50,\;0.75,\;0.90
+$$
+
+Each model describes how predictors relate to a different part of the wage distribution.
+
+Instead of one regression line, we obtain a series of distributional effects.
+
+## Comparing OLS and Median Regression
+
+Both models estimate relationships between predictors and wages.
+
+However:
+
+- OLS estimates the conditional mean.
+- Median regression estimates the conditional median.
+- Median regression is less sensitive to extreme observations.
+
+In skewed wage distributions, these estimates need not be identical.
+
+---
+
+## Why Estimate Multiple Quantiles?
+
+Median regression tells us about the centre of the distribution.
+
+But social scientists are often interested in questions such as:
+
+::: incremental
+- Who benefits most from education?
+- Are wage gaps larger among high earners?
+- Do labour market advantages accumulate at the top?
+:::
+
+To answer these questions, we estimate several quantile regression models.
+
+---
+
+## Education Effects Across Quantiles
+
+![](figures/education_return_ci.png)
+
+**The estimated return to education varies across the wage distribution.**
+
+---
+
+## Interpreting the Education Effect
+
+::: incremental
+- Education is positively associated with wages across all quantiles.
+- The estimated effect is larger at higher quantiles.
+- Returns to education appear strongest among high-wage workers.
+:::
+
+**The benefits of education are not evenly distributed across workers.**
+
+---
+
+## Ethnicity Wage Gaps Across Quantiles
+
+![](figures/ethnicity_wage_gap.png)
+
+**The ethnicity wage gap varies across the wage distribution.**
+
+---
+
+## Interpreting the Ethnicity Effect
+
+::: incremental
+- Wage gaps are present across much of the distribution.
+- The magnitude of the gap varies by quantile.
+- Average effects conceal important distributional differences.
+:::
+
+**Quantile regression reveals where disparities are most pronounced.**
+
+---
+
+## Coefficient Process Plot
+
+![](figures/coefficient_process_plot.png)
+
+**Estimated effects change across quantiles.**
+
+---
+
+## Comparing Quantile and OLS Estimates
+
+The coefficient process plot allows us to compare:
+
+- OLS estimates (average effects)
+- Quantile regression estimates (distributional effects)
+
+When the quantile estimates depart from the OLS line, the effect varies across the distribution.
+
+---
+
+## Main Findings
+
+::: incremental
+- Wage distributions are highly skewed.
+- OLS provides useful summaries of average effects.
+- Education effects increase across the wage distribution.
+- Ethnicity wage gaps vary across quantiles.
+- Quantile regression reveals heterogeneity hidden by mean regression.
+:::
+
+---
+
+## Key Takeaways
+
+Quantile regression extends standard regression by modelling:
+
+$$
+Q_{\tau}(Y|X)
+$$
+
+rather than only:
+
+$$
+E(Y|X)
+$$
+
+This allows researchers to investigate how relationships differ across the outcome distribution.
+
+---
+
+## Questions? {background-color="#2C3E50"}
+
+
+## 
+
+::: {style="text-align: center; padding-top: 80px; font-size: 1.1em; font-style: italic; color: #555;"}
+
+“All models are wrong, but some are useful.”
+
+— George Box
+
+:::

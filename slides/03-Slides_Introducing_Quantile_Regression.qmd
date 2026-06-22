@@ -1,0 +1,535 @@
+---
+title: "Introducing Quantile Regression"
+subtitle: "From Conditional Quantiles to the Regression Model"
+author: "Tatjana Kecojević"
+date: "24 June 2026"
+
+bibliography: references.bib
+
+format:
+  revealjs:
+    theme: serif
+    slide-number: true
+    transition: fade
+    background-transition: fade
+    footer: "Beyond the Mean · Session 1 · Tatjana Kecojević"
+    logo: "UoM_logos/UoM_logo_TAB_col_white_background.png"
+    smaller: false
+    scrollable: false
+    code-fold: true
+    code-summary: "Show code"
+    highlight-style: github
+    fig-align: center
+
+execute:
+  echo: true
+  warning: false
+  message: false
+  freeze: false
+---
+
+```{r setup}
+#| include: false
+
+library(tidyverse)
+library(quantreg)
+library(AER)
+
+theme_set(theme_minimal(base_size = 14))
+
+set.seed(4821)
+
+check_fn <- function(u, tau) u * (tau - as.numeric(u < 0))
+taus <- c(0.10, 0.25, 0.50, 0.75, 0.90)
+```
+
+# Part 3 {background-color="#2C3E50"}
+
+## Learning Objectives
+
+By the end of this session you will be able to:
+
+::: incremental
+- Explain what quantile regression estimates and how it extends OLS
+- Describe the check function and the role of the indicator $\mathbf{1}(u < 0)$
+- Read and run `rq()` in R
+- Interpret a quantile regression coefficient at a specific $\tau$
+- Explain when QR and OLS diverge, and why it matters
+:::
+
+# The Key Idea {background-color="#2C3E50"}
+
+## OLS estimates one thing
+
+OLS estimates the **conditional mean**:
+
+$$E(Y \mid X) = X'\beta$$
+
+One set of coefficients. One line through the data.
+
+. . .
+
+> *"A single mean curve might not be informative enough."*
+
+## Quantile regression estimates the whole distribution
+
+Quantile regression replaces the conditional mean with the **conditional quantile**: $Q_\tau(Y \mid X) = X'\beta(\tau)$
+
+. . .
+
+Two things change:
+
+| | OLS | Quantile Regression |
+|---|---|---|
+| Estimates | Conditional **mean** | Conditional **quantile** |
+| Coefficients | One set | One set **per** $\tau$ |
+| Lines | One | A family |
+
+## When does it matter?
+
+::: {.columns}
+::: {.column width="50%"}
+**Parallel lines** $\rightarrow$ OLS tells the full story
+
+All quantiles shift equally with $X$. The effect is *homogeneous*.
+:::
+::: {.column width="50%"}
+**Fanning lines** $\rightarrow$ OLS misses the heterogeneity
+
+Lower and upper quantiles respond differently to $X$.
+:::
+:::
+
+. . .
+
+```{r fig-homhet}
+#| fig-width: 8.5
+#| fig-height: 3
+#| echo: false
+
+n <- 300
+x <- runif(n, 1, 10)
+
+df_both <- bind_rows(
+  tibble(x = x, y = 2 + 0.8*x + rnorm(n, 0, 2),
+         scenario = "Homogeneous effect\n(parallel QR lines)"),
+  tibble(x = x, y = 2 + 0.8*x + rnorm(n, 0, 0.5*x),
+         scenario = "Heterogeneous effect\n(fanning QR lines)")
+) |>
+  mutate(scenario = factor(scenario, levels = c(
+    "Homogeneous effect\n(parallel QR lines)",
+    "Heterogeneous effect\n(fanning QR lines)"
+  )))
+
+qr_df <- map_dfr(levels(df_both$scenario), \(sc) {
+  d <- filter(df_both, scenario == sc)
+  map_dfr(taus, \(t) {
+    fit <- rq(y ~ x, data = d, tau = t)
+    tibble(scenario = factor(sc, levels = levels(df_both$scenario)),
+           tau = factor(paste0("Q", t*100), levels = paste0("Q", taus*100)),
+           intercept = coef(fit)[1], slope = coef(fit)[2])
+  })
+})
+
+ggplot(df_both, aes(x, y)) +
+  geom_point(alpha = 0.20, colour = "grey50") +
+  geom_abline(data = qr_df, aes(intercept = intercept, slope = slope, colour = tau),
+              linewidth = 0.9) +
+  scale_colour_brewer(palette = "RdYlBu", name = "Quantile", direction = -1) +
+  facet_wrap(~scenario) +
+  labs(x = "Predictor", y = "Outcome")
+```
+
+# How Is It Estimated? {background-color="#2C3E50"}
+
+## Three loss functions: three estimators
+
+| Minimise | Estimator | Estimates |
+|---|---|---|
+| $\sum (y_i - \mu)^2$ | OLS | Conditional <span style="color:red;">mean</span> |
+| $\sum \|y_i - \xi\|$ | Least absolute deviations | Conditional <span style="color:red;">median</span> |
+| $\sum \rho_\tau(y_i - \xi)$ | Quantile regression | Conditional <span style="color:red;">$\tau$-th quantile</span> |
+
+. . .
+
+The key: **the criterion we minimise determines which part of the distribution we estimate.**
+
+## Why does absolute loss give the median?
+
+```{r fig-lad}
+#| fig-height: 3.5
+#| fig-width: 6
+#| echo: false
+
+households    <- c(100, 150, 200, 250, 800)
+candidates    <- seq(50, 850, by = 1)
+total_abs_dev <- sapply(candidates, \(m) sum(abs(households - m)))
+
+tibble(candidate = candidates, total_abs_dev = total_abs_dev) |>
+  ggplot(aes(x = candidate, y = total_abs_dev)) +
+  geom_line(colour = "steelblue", linewidth = 1) +
+  geom_vline(xintercept = 200, colour = "#2ca25f", linetype = "dashed", linewidth = 1) +
+  geom_vline(xintercept = 300, colour = "tomato",  linetype = "dashed", linewidth = 1) +
+  annotate("text", x = 220, y = 1550, label = "Median = 200", colour = "#2ca25f", hjust = 0) +
+  annotate("text", x = 320, y = 1450, label = "Mean = 300",   colour = "tomato",  hjust = 0) +
+  labs(title = "Five households: 100, 150, 200, 250, 800",
+       x = "Candidate value ξ", y = "Total absolute deviation")
+```
+
+The outlier at 800 pulls the **mean** away. The **median** is unaffected.
+
+## The check function $\rho_\tau(u)$
+
+$$\rho_\tau(u) = u \cdot \bigl(\tau - \mathbf{1}(u < 0)\bigr)$$
+
+. . .
+
+The term $\mathbf{1}(u < 0)$ is an **indicator function**: it equals <span style="color:red;">1</span> when the observation is <span style="color:red;">*below*</span> the fitted line, <span style="color:#1f77b4;">0</span> when it is <span style="color:#1f77b4;">*above*</span>.
+
+. . .
+
+::: {.columns}
+::: {.column width="50%"}
+**When $u > 0$** (above line):
+
+penalty $= u \times \tau$
+:::
+::: {.column width="50%"}
+**When $u < 0$** (below line):
+
+penalty $= |u| \times (1 - \tau)$
+:::
+:::
+
+. . .
+
+Changing $\tau$ changes which side is penalised more heavily $\rightarrow$ the line moves to a different part of the distribution.
+
+## The check function - visually
+
+```{r fig-checkfn}
+#| fig-height: 3.8
+#| fig-width: 9
+#| echo: false
+
+u_vals     <- seq(-3, 3, length.out = 500)
+tau_vals   <- c(0.10, 0.50, 0.90)
+tau_labels <- c("τ = 0.10\n(10th percentile)", "τ = 0.50\n(Median)", "τ = 0.90\n(90th percentile)")
+
+loss_df <- map_dfr(seq_along(tau_vals), \(i)
+  tibble(u    = u_vals,
+         loss = check_fn(u_vals, tau_vals[i]),
+         tau  = factor(tau_labels[i], levels = tau_labels)))
+
+loss_df |>
+  ggplot(aes(x = u, y = loss)) +
+  geom_line(colour = "steelblue", linewidth = 1.3) +
+  geom_vline(xintercept = 0, linetype = "dotted", colour = "grey50") +
+  facet_wrap(~tau) +
+  labs(x = "Residual  u = y − ŷ", y = "Loss  ρτ(u)",
+       subtitle = "Steeper arm = heavier penalty on that side")
+```
+
+## The indicator function - concrete numbers
+
+Seven observations, $\tau = 0.25$. **Which $\xi$ minimises the sum?**
+
+$$\sum \rho_\tau(y_i - \xi)$$  
+
+Quantile regression | Conditional <span style="color:red;">$\tau$-th quantile</span> 
+
+## **Guess** $\xi = 0.674$ $\rightarrow$ Sum = 3.84 ❌
+
+::: {.columns}
+::: {.column width="97%"}
+
+```{r tbl-bad}
+#| echo: false
+
+y7 <- c(1.622,-0.161,-0.461,-0.612,0.674,0.711,-0.865)
+tibble(
+  yi = round(y7, 3),
+  `u` = round(y7 - 0.674, 3),
+  `1(u<0)` = as.integer((y7 - 0.674) < 0),
+  `⍴` = round(check_fn(y7 - 0.674, 0.25), 3)
+) |> knitr::kable()
+```
+:::
+:::
+
+## **Optimal** $\xi = -0.612$ $\rightarrow$ Sum = 1.55 \ding{51} \checkmark
+
+::: {.columns}
+::: {.column width="97%"}
+
+```{r tbl-opt}
+#| echo: false
+
+tibble(
+  yi = round(y7, 3),
+  `u` = round(y7 - (-0.612), 3),
+  `1(u<0)` = as.integer((y7 - (-0.612)) < 0),
+  `⍴` = round(check_fn(y7 - (-0.612), 0.25), 3)
+) |> knitr::kable()
+```
+:::
+:::
+
+. . .
+
+At the optimal $\xi$, exactly **1 of 7 observations** lies below, approximately 14%, close to the 25th percentile of this small sample.
+
+## 🗂️ Hands-On Activity
+
+::: {.callout-note}
+Open the spreadsheet **`QR_CheckFunction.xlsx`**.
+
+- Change $\xi$ manually → watch the total sum respond
+- Change $\tau$ → see how the penalty weights shift
+- Find the minimum by hand
+
+When you have found it, `rq()` will do the same thing in one line.
+:::
+
+# Visual Intuition {background-color="#2C3E50"}
+
+## The Engel data
+
+Food expenditure vs household income, Belgium, 1857 ($n = 235$)
+
+```{r load-engel}
+#| echo: false
+#| fig-height: 4
+
+data(engel, package = "quantreg")
+
+engel |>
+  ggplot(aes(x = income, y = foodexp)) +
+  geom_point(alpha = 0.4, colour = "grey40") +
+  labs(x = "Annual income (Belgian francs)",
+       y = "Annual food expenditure (Belgian francs)",
+       subtitle = "Notice: the spread of food expenditure grows with income (heteroscedasticity)")
+```
+
+## OLS: one line through the data
+
+```{r fig-ols}
+#| echo: false
+#| fig-height: 4
+
+ols_engel <- lm(foodexp ~ income, data = engel)
+
+engel |>
+  ggplot(aes(x = income, y = foodexp)) +
+  geom_point(alpha = 0.35, colour = "grey40") +
+  geom_abline(intercept = coef(ols_engel)[1], slope = coef(ols_engel)[2],
+              linewidth = 1.2) +
+  labs(x = "Annual income", y = "Annual food expenditure",
+       subtitle = "OLS estimates the conditional mean, but misses the spread")
+```
+
+## Quantile regression: a family of lines
+
+```{r fig-fan}
+#| echo: false
+#| fig-height: 4.2
+
+qr_lines <- map_dfr(taus, \(t) {
+  fit <- rq(foodexp ~ income, data = engel, tau = t)
+  tibble(tau = factor(paste0("Q", t*100), levels = paste0("Q", taus*100)),
+         intercept = coef(fit)[1], slope = coef(fit)[2])
+})
+
+engel |>
+  ggplot(aes(x = income, y = foodexp)) +
+  geom_point(alpha = 0.30, colour = "grey50") +
+  geom_abline(data = qr_lines,
+              aes(intercept = intercept, slope = slope, colour = tau),
+              linewidth = 1) +
+  scale_colour_brewer(palette = "RdYlBu", name = "Quantile", direction = -1) +
+  labs(x = "Annual income", y = "Annual food expenditure",
+       subtitle = "The fan reveals heteroscedasticity that OLS averages over")
+```
+
+The lines spread at higher income levels, wealthier households differ more from each other.
+
+## Can quantile lines cross?
+
+**Theoretically:** No, $Q_\tau(Y \mid x)$ is non-decreasing in $\tau$ for fixed $x$.
+
+**In practice:** Estimated lines *can* cross, especially with:
+
+- Small samples
+- Extreme quantiles ($\tau < 0.05$ or $> 0.95$)
+- Flexible nonlinear models
+
+This is undesirable because true quantiles should be non-decreasing in \tau.
+
+## Estimated Quantiles Change in Steps
+
+In finite samples, estimated quantile functions are step functions rather than perfectly smooth curves.
+
+```{r fig-stepfn}
+#| echo: false
+#| fig-height: 4.5
+
+df7    <- tibble(x = c(1,2,3,5,6,8,9), y = c(2,1,5,2,8,6,9))
+xbar7  <- mean(df7$x)
+tau_fine  <- seq(0.01, 0.99, by = 0.01)
+q_at_xbar <- map_dbl(tau_fine, \(t)
+  suppressWarnings(predict(rq(y ~ x, data = df7, tau = t),
+                           newdata = data.frame(x = xbar7))))
+
+tibble(tau = tau_fine, q = q_at_xbar) |>
+  ggplot(aes(tau, q)) +
+  geom_step(colour = "steelblue", linewidth = 1.2) +
+  labs(title = "Q̂(τ | x̄) — always a step function",
+       x = "τ", y = "Q̂(τ | x̄)",
+       subtitle = "Non-decreasing by construction")
+```
+In large survey datasets, especially for central quantiles (e.g., \tau=0.25, 0.5, 0.75), quantile crossing is uncommon in practice because the estimates are relatively stable.
+
+# `rq()` in R {background-color="#2C3E50"}
+
+## The `rq()` function
+
+Syntax mirrors `lm()`:
+
+```{r rq-demo}
+#| eval: true
+#| code-fold: false
+
+# Median regression (τ = 0.5)
+fit_median <- rq(foodexp ~ income, data = engel, tau = 0.5)
+summary(fit_median)
+```
+
+## Multiple quantiles at once
+
+```{r rq-multi}
+#| code-fold: false
+
+fit_multi <- rq(
+  foodexp ~ income,
+  data = engel,
+  tau  = c(0.10, 0.25, 0.50, 0.75, 0.90)
+)
+```
+
+. . .
+
+Returns an `rqs` object → one model per $\tau$.
+
+. . .
+
+::: callout-note
+Default standard errors use **rank inversion**. For applied work, bootstrapped SEs (`se = "boot"`) are often preferred. This is covered in Section 04.
+:::
+
+# Interpreting Coefficients {background-color="#2C3E50"}
+
+## The interpretation template
+
+For $Q_\tau(\text{foodexp} \mid \text{income}) = \beta_0(\tau) + \beta_1(\tau) \times \text{income}$:
+
+> *"At the $\tau$-th quantile of food expenditure, a one-unit increase in income is associated with $\hat{\beta}_1(\tau)$ francs, holding other variables constant."*
+
+. . .
+
+The phrase **"at the $\tau$-th quantile"** is not optional, it is what distinguishes QR from OLS.
+
+## Slope across quantiles - Engel data
+
+```{r coef-table}
+#| echo: false
+
+map_dfr(taus, \(t) {
+  fit <- rq(foodexp ~ income, data = engel, tau = t)
+  tibble(`τ` = t,
+         Quantile = paste0(t*100, "th percentile"),
+         `Slope β̂₁(τ)` = round(coef(fit)["income"], 4))
+}) |> knitr::kable()
+```
+
+. . .
+
+The slope increases across quantiles $\Rightarrow$ income matters **more** for high-spending households.
+
+## Coefficient plot
+
+```{r fig-coefplot}
+#| echo: false
+#| fig-height: 3.8
+
+ols_slope <- coef(lm(foodexp ~ income, data = engel))["income"]
+
+coef_plot_df <- map_dfr(taus, \(t) {
+  fit <- rq(foodexp ~ income, data = engel, tau = t)
+  s   <- summary(fit, se = "boot")
+  cm  <- s$coefficients
+  tibble(tau   = t,
+         est   = cm["income", "Value"],
+         lower = cm["income", "Value"] - 1.96 * cm["income", "Std. Error"],
+         upper = cm["income", "Value"] + 1.96 * cm["income", "Std. Error"])
+})
+
+ggplot(coef_plot_df, aes(x = tau, y = est)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.20, fill = "steelblue") +
+  geom_line(colour = "steelblue", linewidth = 1) +
+  geom_point(colour = "steelblue", size = 2.5) +
+  geom_hline(yintercept = ols_slope, linetype = "dashed",
+             colour = "tomato", linewidth = 0.9) +
+  annotate("text", x = 0.12, y = ols_slope + 0.003,
+           label = "OLS", colour = "tomato", size = 3.5, hjust = 0) +
+  scale_x_continuous(breaks = taus, labels = paste0(taus*100, "th")) +
+  labs(x = "Quantile (τ)", y = "Slope coefficient (income)",
+       subtitle = "Shaded band = 95% bootstrap CI · Dashed line = OLS estimate")
+```
+
+# QR and OLS {background-color="#2C3E50"}
+
+## When do they agree?
+
+::: incremental
+- **They agree** when the conditional distribution is symmetric and homoscedastic → OLS gives the full picture
+- **They diverge** when:
+  1. **Skewed outcomes**: wages, income, house prices. OLS is influenced by the upper tail; the median is not.
+  2. **Heteroscedasticity**: the Engel data. Slopes differ systematically across quantiles.
+  3. **Tail effects**: when the research question is specifically about high or low earners, extreme health outcomes, etc.
+:::
+
+## Take-home message
+
+::: {.callout-important}
+## Quantile regression complements OLS, it does not replace it.
+
+If coefficients are **stable** across quantiles → OLS is telling you the full story.
+
+If coefficients **vary** across quantiles → OLS is concealing important heterogeneity.
+
+The coefficient plot across $\tau$ is your diagnostic.
+:::
+
+# What Comes Next {background-color="#2C3E50"}
+
+## This afternoon: hands-on with CPS1988
+
+We move to US wage data ($n = 28{,}155$, Current Population Survey 1988).
+
+**Questions we will answer:**
+
+::: incremental
+- Does the return to an additional year of education differ for low and high earners?
+- Is the ethnic wage gap uniform across the earnings distribution?
+- How do we construct and interpret confidence intervals for QR estimates?
+:::
+
+# **Break now**: we will pick up with Session 04 (Inference) after the break. {background-color="#2C3E50"}
+
+## 
+
+::: {style="text-align: center; padding-top: 80px; font-size: 1.1em; font-style: italic; color: #555;"}
+*"It is difficult to understand why statisticians limit their inquiries to Averages, and do not seem to revel in more comprehensive views."*
+
+- Francis Galton, *Natural Inheritance*, 1890
+:::

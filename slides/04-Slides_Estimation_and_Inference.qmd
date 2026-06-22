@@ -1,0 +1,581 @@
+---
+title: "Estimation and Inference"
+subtitle: "Standard Errors, Confidence Intervals, and Hypothesis Tests"
+author: "Tatjana Kecojević"
+date: "24 June 2026"
+
+bibliography: references.bib
+
+format:
+  revealjs:
+    theme: serif
+    slide-number: true
+    transition: fade
+    background-transition: fade
+    footer: "Beyond the Mean · Tatjana Kecojević"
+    logo: "UoM_logos/UoM_logo_TAB_col_white_background.png"
+    smaller: false
+    scrollable: false
+    code-fold: true
+    code-summary: "Show code"
+    highlight-style: github
+    fig-align: center
+
+execute:
+  echo: true
+  warning: false
+  message: false
+  freeze: false
+---
+
+```{r setup}
+#| include: false
+
+library(tidyverse)
+library(quantreg)
+library(AER)
+
+theme_set(theme_minimal(base_size = 14))
+
+set.seed(4821)
+
+check_fn <- function(u, tau) u * (tau - as.numeric(u < 0))
+taus <- c(0.10, 0.25, 0.50, 0.75, 0.90)
+```
+
+# Part 4 {background-color="#2C3E50"}
+
+## Learning Objectives
+
+By the end of this session you will be able to:
+
+::: incremental
+- Explain why inference is more difficult in quantile regression
+- Understand the sparsity problem
+- Compare standard error estimation methods
+- Interpret confidence intervals
+- Test whether effects differ across quantiles
+- Use coefficient plots to assess heterogeneity
+:::
+
+## Recap: What Did We Learn Previously?
+
+In Notebook 03 we learned how to:
+
+- Estimate conditional quantiles using rq()
+- Interpret quantile regression coefficients
+- Compare OLS and quantile regression estimates
+
+::: incremental
+In this section, we focus on:     
+<span style="color:red;">How certain are those estimates?</span>
+::: 
+
+## Inference in OLS
+
+OLS standard errors, $\mathrm{SE}(\hat{\beta})$, depend on:
+
+- Variation in the predictor
+
+- Residual variance
+
+Both quantities are straightforward to estimate from the data.
+
+::: {.callout-note}
+OLS inference is relatively simple because the ingredients needed for standard errors are directly observable.
+:::
+
+## Inference in Quantile Regression
+
+Quantile regression depends on something different.
+
+**Key Question**: <span style="color:red;">How many observations lie near the quantile being estimated?</span>
+
+Precision depends on the **local density** of observations around the quantile.
+
+- Many nearby observations → high precision
+- Few nearby observations → low precision
+
+Inference therefore depends on information local to the quantile of interest.
+
+## The Sparsity Problem
+
+:::: {.columns}
+::: {.column width="45%"}
+
+- Dense regions of the distribution
+  - smaller standard errors
+
+- Sparse regions of the distribution
+  - larger standard errors
+
+:::
+::: {.column width="55%"}
+![](figures/sparsity_density.png)
+
+Inference becomes less precise in the tails.
+:::
+::::
+
+The lower the density around a quantile, the harder it is to estimate that quantile precisely.
+
+## The Sparsity Function
+
+$$
+s(\tau)=\frac{1}{f(F^{-1}(\tau))}
+$$
+
+::: {.callout-note}
+High density around a quantile → smaller standard errors
+
+Low density around a quantile → larger standard errors
+:::
+
+You do not need to compute the sparsity function yourself.
+
+The `quantreg` package estimates it internally when computing standard errors.
+
+## Why Does This Matter?
+
+Different methods estimate quantile regression standard errors differently.
+
+The choice of method can affect:
+
+- Standard errors
+- Confidence intervals
+- Hypothesis tests
+
+Next: how does `quantreg` compute inference?
+
+## Standard Error Methods
+
+`quantreg` implements several approaches:
+
+| Method | Argument |
+|----------|----------|
+| Rank inversion | `"rank"` |
+| IID | `"iid"` |
+| Sandwich | `"nid"` |
+| Bootstrap | `"boot"` |
+
+Which one should we use? 🤔
+
+## Practical Recommendation
+
+::: {.callout-important}
+For most applied social science research: **Use bootstrap standard errors**
+
+```r
+summary(fit, se = "boot", R = 1000)
+```
+:::
+
+**Advantages**:   
+- Few distributional assumptions  
+- Robust to heteroscedasticity  
+- Widely recommended in applied work
+
+**Disadvantage**:   
+- Computationally slower
+
+## Default Output from `summary.rq()`
+
+When you call: `summary(fit)`   
+`quantreg` computes coefficient estimates together with measures of uncertainty.
+
+The output typically includes:  
+- Coefficient estimates   
+- Standard errors   
+- Test statistics   
+- p-values
+
+The exact inference method depends on the sample size and the options supplied to `summary.rq()`.
+
+## Example: Default Output
+
+```r
+fit_median <- rq(
+  formula_wages,
+  data = CPS1988,
+  tau = 0.50
+)
+summary(fit_median)
+```
+
+![](figures/default_output.png)
+
+::: {.callout-note}
+The default summary output reports coefficient estimates together with standard errors, test statistics, and p-values.
+:::
+
+## Bootstrap Standard Errors
+
+Bootstrap repeatedly:
+
+1. Resamples observations
+2. Refits the model
+3. Computes coefficient estimates
+
+The variability across replications provides:
+
+- Standard errors
+- Confidence intervals
+- Hypothesis tests
+
+
+## Example: Bootstrap Output
+
+```r
+fit_median_boot <- rq(
+  formula_wages,
+  data = CPS1988,
+  tau = 0.50
+)
+
+summary(
+  fit_median_boot,
+  se = "boot",
+  R = 100
+)
+```
+::: {.callout-note}
+
+Bootstrap makes relatively few assumptions and is often recommended for applied work.
+
+:::
+
+## Bootstrap Output
+
+![](figures/bootstrap_output.png){width=100%}
+
+Bootstrap inference provides:   
+- Standard errors   
+- t statistics  
+- p-values  
+
+in a format very similar to OLS output.
+
+## Confidence Intervals (CIs)
+
+Standard errors are useful, but researchers usually report:
+
+- Confidence intervals
+- Hypothesis tests
+
+A confidence interval combines:
+
+- The coefficient estimate
+- Its uncertainty
+
+General form for an approximate 95% confidence interval:
+
+$$
+\hat{\beta} \pm 1.96 \times SE(\hat{\beta})
+$$
+
+## Returns to Education Across Quantiles
+
+We fit the wage model at: τ = 0.10, τ = 0.25, τ = 0.50, τ = 0.75, τ = 0.90
+
+For each quantile we compute:
+
+- Coefficient estimate
+- Standard error
+- 95% confidence interval
+
+**Focus**: the coefficient on <span style="color:#1f77b4;">education</span>.
+
+## Education Coefficient with 95% CIs
+
+![](figures/education_coefficient_ci.png){width=90%}
+
+::: {.callout-note}
+Blue line = quantile regression estimates
+
+Shaded region = 95% confidence intervals
+
+Red dashed line = OLS estimate
+:::
+
+## Interpreting the CIs
+
+What do we learn?
+
+- Returns to education are positive at all quantiles
+
+- The estimated effect increases across the wage distribution
+
+- Higher earners appear to benefit more from additional education
+
+- The OLS estimate lies between the lower and upper quantile estimates
+
+<span style="color:#1f77b4;">Quantile regression reveals heterogeneity that is hidden by a single average OLS coefficient.</span>
+
+---
+
+### Testing Whether Effects Differ Across Quantiles
+
+The coefficient plot suggests that the return to education changes across the wage distribution.
+
+But is that difference statistically significant?
+
+We can formally test:
+
+$$
+H_0:\beta_{education}(0.10)=\beta_{education}(0.90)
+$$
+
+against
+
+$$
+H_1:\beta_{education}(0.10)\neq\beta_{education}(0.90)
+$$
+
+using `anova.rq()`.
+
+---
+
+### Testing Equality Across Quantiles
+
+When a model is fitted at multiple quantiles:
+
+```r
+fit_joint <- rq(
+  formula_wages,
+  data = CPS1988,
+  tau = c(0.10, 0.25, 0.50, 0.75, 0.90)
+)
+
+anova(fit_joint)
+```
+
+`anova.rq()` tests whether coefficients are equal across quantiles.
+
+## ANOVA Test Output
+
+![](figures/anova_rq_output.png){width=90%}
+
+The test evaluates whether coefficients are equal across quantiles.
+
+**Result**: $p < 2.2 \times 10^{-16}$
+
+A very small p-value indicates strong evidence against equality.
+
+## Interpreting the ANOVA Test
+
+What does the result tell us?
+
+- The coefficients are not constant across quantiles
+
+- At least one predictor exhibits heterogeneous effects
+
+- The relationship between predictors and wages changes across the distribution
+
+- OLS cannot fully summarise these relationships
+
+::: {.callout-important}
+
+The data provide strong evidence of heterogeneous effects.
+
+:::
+
+## The Coefficient Plot: Your Main Diagnostic
+
+Formal tests tell us whether effects differ.
+
+Coefficient plots show:
+
+- Which effects differ
+- How they differ
+- Where they differ in the distribution
+
+For applied work, the coefficient plot is often the most informative output from a quantile regression analysis.
+
+## Coefficient Process Plot
+
+![](figures/coefficient_process_plot.png)
+
+::: {.callout-note}
+The model also includes $experience^2$. It is omitted from the plot for readability.
+:::
+
+## Interpretation: Education
+
+What do we observe?
+
+- Returns to education increase across the wage distribution
+
+- The effect is substantially smaller at lower quantiles
+
+- Higher earners appear to benefit more from additional education
+
+- The OLS estimate masks this heterogeneity
+
+::: {.callout-note}
+
+Education has a stronger effect among higher-paid workers.
+
+:::
+
+---
+
+#### Interpretation: Experience
+
+What do we observe?
+
+- The effect of experience declines across the wage distribution
+
+- Returns to experience are largest at lower quantiles
+
+- The coefficient falls steadily as $\tau$ increases
+
+- The OLS estimate obscures this pattern
+
+::: {.callout-note}
+
+Experience appears to matter more for lower-paid workers than for higher-paid workers.
+
+:::
+
+---
+
+#### Interpretation: Ethnicity (African-American)
+
+What do we observe?
+
+- The wage penalty is largest at lower quantiles
+
+- The penalty becomes smaller higher in the wage distribution
+
+- The coefficient moves closer to zero as $\tau$ increases
+
+- The OLS estimate averages over these differences
+
+::: {.callout-note}
+
+The disadvantage appears to be concentrated among lower-paid workers.
+
+:::
+
+--- 
+
+#### Interpretation: Metropolitan Area
+
+What do we observe?
+
+- Positive effect across the entire wage distribution
+
+- Little variation across quantiles
+
+- OLS provides a reasonable summary
+
+::: {.callout-note}
+Compared with education and ethnicity, the metropolitan effect is relatively stable.
+:::
+
+## What Have We Learned?
+
+Different predictors exhibit different patterns:
+
+- Education: stronger effects at higher quantiles
+- Experience: stronger effects at lower quantiles
+- Ethnicity: larger penalty at lower quantiles
+- Metropolitan area: relatively stable effect
+
+::: {.callout-important}
+Quantile regression allows us to identify where effects differ across the outcome distribution rather than summarising everything with a single average effect.
+:::
+
+---
+
+#### A Practical Workflow
+
+1. Fit quantile regression models at several values of τ
+
+2. Obtain confidence intervals
+   - `se = "nid"` for exploration
+   - `se = "boot"` for final inference
+
+3. Create coefficient plots
+
+4. Test equality across quantiles using `anova.rq()`
+
+5. Interpret how effects change across the distribution
+
+::: {.callout-note}
+The coefficient plot is often the most informative output from a quantile regression analysis.
+:::
+
+---
+
+#### Key Takeaways
+
+- Inference in quantile regression depends on local density
+
+- Sparse regions lead to larger standard errors
+
+- Bootstrap is generally recommended for applied work
+
+- Confidence intervals quantify uncertainty
+
+- ANOVA tests can assess equality across quantiles
+
+- Coefficient plots are the primary diagnostic tool
+
+::: {.callout-important}
+The goal of quantile regression is not simply significance.
+
+The goal is understanding how relationships vary across the outcome distribution.
+:::
+
+# What Comes Next {background-color="#2C3E50"}
+
+## Session 05: Quantile Regression in R
+
+We now put everything together using the CPS1988 wage data.
+
+**Questions we will answer:**
+
+::: incremental
+- How do we fit quantile regression models in practice?
+- How do QR and OLS results differ?
+- How do we interpret coefficient plots and confidence intervals?
+- How do we communicate QR findings to substantive audiences?
+:::
+
+By the end of the session, you will have completed a full quantile regression workflow from estimation to interpretation.
+
+## CPS1988: An Applied Example
+
+We will analyse weekly wages as a function of:
+
+- Education
+- Labour market experience
+- Ethnicity
+- Metropolitan residence
+
+using:
+
+$$
+\log(\text{wage})
+=
+\beta_0 +
+\beta_1\text{education} +
+\beta_2\text{experience} +
+\beta_3\text{experience}^2 +
+\beta_4\text{ethnicity} +
+\beta_5\text{smsa}
+$$
+
+Our goal is to understand how these relationships differ across the wage distribution.
+
+# Break now: next we put these ideas into practice using CPS1988 wage data. {background-color="#2C3E50"}
+
+
+## 
+
+::: {style="text-align: center; padding-top: 80px; font-size: 1.1em; font-style: italic; color: #555;"}
+“The purpose of computing is insight, not numbers.”
+
+— Richard Hamming
+:::

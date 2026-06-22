@@ -1,0 +1,345 @@
+---
+title: "Quantiles and Conditional Quantiles"
+subtitle: "Moving Beyond the Conditional Mean"
+author: "Tatjana Kecojević"
+date: "24 June 2026"
+
+format:
+  revealjs:
+    theme: serif
+    slide-number: true
+    logo: UoM_logos/UoM_logo_TAB_col_white_background.png
+    title-slide: false
+editor: visual
+---
+
+# Learning Objectives
+
+By the end of this session you will be able to:
+
+- Define quantiles and percentiles
+- Distinguish between unconditional and conditional quantiles
+- Explain why quantiles provide information beyond averages
+- Interpret growth charts as conditional quantiles
+- Understand the motivation for quantile regression
+
+---
+
+## Why might average effects be insufficient?
+
+![](figures/policy_comparison.png){width=50%}
+
+Two policies can have similar average effects but very different consequences across the distribution.
+
+---
+
+## Why Go Beyond the Mean?
+
+ Many social science questions focus on:
+
+- Wages
+- Health outcomes
+- Educational achievement
+- Housing prices
+
+Traditional regression focuses on: **The conditional mean**
+
+But important differences may occur across the entire distribution.
+
+---
+
+## A Historical Motivation
+
+One of the earliest attempts to study human variation was undertaken by:
+
+### Adolphe Quetelet (1796–1874)
+
+![](images/Quetelet.png){width="80%"}
+
+---
+
+## Beyond the "Average Person"
+
+Quetelet introduced the idea of the
+
+### *l'homme moyen* (the average man)
+
+However:
+
+- Individuals differ substantially
+- Populations exhibit variation
+- Understanding distributions is often more informative than understanding averages
+
+---
+
+## Thinking About Percentiles
+
+Suppose a doctor tells a parent: <span style="color:#1f77b4;">*Your child is at the 25th percentile for weight.*</span>
+
+What does this mean?
+
+<span style="color:red;">Percentiles Describe Position</span>
+
+A child at the 25th percentile:
+
+- weighs more than roughly 25% of children
+- weighs less than roughly 75% of children
+
+A percentile indicates: Position within a distribution not distance from an average.
+
+---
+
+## What Is a Quantile?
+
+A quantile is a value below which a specified proportion of observations falls.
+
+Examples:
+
+- 25th percentile
+- 50th percentile (median)
+- 75th percentile
+
+---
+
+## Quantiles Divide a Distribution
+
+![](figures/quantiles_distribution.png)
+
+Quantiles divide an ordered distribution into meaningful sections.
+
+---
+
+## Quartiles
+
+Quartiles divide the distribution into four equal parts.
+
+| Quartile | Percentile    |
+|----------|---------------|
+| Q1       | 25th          |
+| Q2       | 50th (Median) |
+| Q3       | 75th          |
+
+---
+
+## The Median
+
+The median is the most familiar quantile.
+
+### 50th percentile
+
+- Half of observations lie below it
+- Half lie above it
+
+Unlike the mean, it is robust to extreme values.
+
+---
+
+## Quantiles Summarised in a Boxplot
+
+![](figures/boxplot_quantiles.png)
+
+---
+
+## Reading a Boxplot
+
+The boxplot displays:
+
+- Q1 (25th percentile)
+- Median (50th percentile)
+- Q3 (75th percentile)
+
+The box contains the middle 50% of observations.
+
+The whiskers and points show the tails of the distribution.
+
+::: {.callout-note}
+## Boxplot whiskers and outliers
+
+Whiskers extend to the furthest observations within **1.5 × IQR** of the quartiles. Points beyond these limits are shown individually as **potential outliers**.
+:::
+
+---
+
+## Why Quantiles Matter
+
+The boxplot immediately reveals:
+
+- skewness
+- spread
+- outliers
+
+Information that is invisible from the mean alone.
+
+---
+
+## Unconditional Quantiles
+
+So far we have considered quantiles calculated from:
+
+### The entire sample
+
+Examples:
+
+- Median wage
+- 90th percentile of income
+- 25th percentile of house prices
+
+These are called: <span style="color:#1f77b4;">Unconditional quantiles</span>
+
+---
+
+## Questions Answered by Unconditional Quantiles
+
+Examples:
+
+- What is the median wage?
+- What income separates the richest 10%?
+- What house price marks the lowest quartile?
+
+<span style="color:red;">Useful...</span> <span style="color:#1f77b4;">but often not sufficient.</span>
+
+---
+
+## Do All Groups Look the Same?
+
+Consider wage distributions for workers with different educational attainment.
+
+#### Wage Distributions by Education
+
+![](figures/wage_distributions_by_education.png)
+
+---
+
+## What Do We Observe?
+
+Workers with higher education tend to have:
+
+- higher wages overall
+- higher upper-tail earnings
+- different distributional shapes
+
+The overall distribution hides these differences.
+
+---
+
+## Conditional Quantiles
+
+::: {.callout-tip}
+## Key Idea
+A **conditional quantile** describes:    
+**The distribution of an outcome given specific characteristics.**
+:::
+
+Examples:
+
+- Wage given education
+- Income given occupation
+- Weight given age
+
+---
+
+## Unconditional vs Conditional Quantiles
+
+| <span style="color:#1f77b4;">Unconditional Quantiles</span>     | <span style="color:#1f77b4;">Conditional Quantiles</span>             |
+|-----------------------------|-----------------------------------|
+| Entire population           | Specific subgroup                 |
+| Overall wage distribution   | Wage distribution given education |
+| Overall weight distribution | Weight distribution given age     |
+
+---
+
+## A Familiar Example
+
+Most people have already encountered conditional quantiles.
+
+### Growth charts
+
+![](images/OverlapGWtFinal.png)
+
+---
+
+## How Do Growth Charts Work?
+
+Each curve represents a different percentile:
+
+- 5th percentile
+- 25th percentile
+- 50th percentile
+- 75th percentile
+- 95th percentile
+
+These percentiles are estimated:
+
+### Conditional on age
+
+---
+
+## Interpreting a Growth Chart
+
+A child on the 25th percentile curve:
+
+- weighs more than approximately 25% of children of the same age
+- weighs less than approximately 75% of children of the same age
+
+Age is the conditioning variable.
+
+---
+
+## The Key Insight
+
+::: {.callout-important}
+
+## Key Insight
+Growth charts <span style="color:red;">are not</span> models of the **average child**.
+
+They model **conditional quantiles**, describing the entire distribution of weight given age.
+:::
+
+Social scientists ask similar questions:
+
+- How does education affect wages?
+- How does class size affect achievement?
+- How does socio-economic status affect health?
+
+<span style="color:red;">Why focus only on the mean?</span>
+
+---
+
+## OLS vs Quantile Regression
+
+**OLS estimates:** <span style="color:#1f77b4;">Conditional means</span>
+
+**Quantile regression estimates:** <span style="color:#1f77b4;">Conditional quantiles</span> allowing effects to differ across the outcome distribution.
+
+
+Instead of asking:
+
+> How does education affect average wages?
+
+We can ask:
+
+- How does education affect low earners?
+- How does education affect median earners?
+- How does education affect top earners?
+
+---
+
+## Take-Home Messages
+
+- Quantiles describe positions within a distribution
+- Quartiles and percentiles are quantiles
+- Unconditional quantiles summarise the whole population
+- Conditional quantiles describe subgroups
+- Growth charts are conditional quantile models
+- Quantile regression extends this idea to regression analysis
+
+---
+
+## Next Section
+
+### Introducing Quantile Regression
+
+- Conditional quantile functions
+- The quantile regression model
+- Estimation using the check loss function
+- Comparing OLS and quantile regression
