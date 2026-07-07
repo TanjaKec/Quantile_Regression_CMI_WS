@@ -566,7 +566,11 @@ ggsave(
 )
 ```
 
-The step function is non-decreasing by construction: the jumps occur at values of $\tau$ where the fitted quantile moves from one observation to the next. The number of steps equals the number of distinct observations ($n = 7$ here), and the height of each step reflects the spacing between consecutive order statistics at $\bar{x}$.
+Because the sample contains only a finite number of observations, the empirical quantile function is a step function rather than a smooth curve. As the quantile level $\tau$ increases, the estimated quantile remains equal to the same observed value over a range of probabilities before jumping to the next ordered observation. With larger samples, these steps become smaller and more frequent, so the empirical quantile function increasingly resembles a smooth curve.
+
+The function is non-decreasing by construction. As $\tau$ increases, the estimated quantile can either remain unchanged or move to a larger value, but it can never decrease. Consequently, each jump corresponds to the fitted quantile moving from one ordered observation to the next.
+
+In this example, there are n=7 distinct observations, so the empirical quantile function has at most seven distinct steps. The height of each step depends on the spacing between neighbouring ordered observations at $\bar{x}$: observations that are close together produce small jumps, whereas observations that are further apart produce larger jumps.
 
 ::: callout-note
 ## The Crossing Issue in Practice
