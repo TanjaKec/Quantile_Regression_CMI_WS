@@ -1,0 +1,304 @@
+---
+title: "YourTurn: Manual Quantile Regression (Linear Model)"
+subtitle: "Understanding the Check Function in Excel"
+author: "Tatjana Kecojević"
+format:
+   pdf:
+#  html:
+    toc: true
+    toc-depth: 2
+---
+
+# Purpose
+
+The purpose of this worksheet is to demonstrate **how quantile regression is estimated**.
+
+Before using the `rq()` function in R, you will manually fit a quantile regression model by changing the regression coefficients and observing how the **total check loss** changes.
+
+Rather than treating quantile regression as a "black box", this exercise shows the optimisation process step by step.
+
+## The Data
+
+The spreadsheet uses the **Engel** dataset from the **quantreg** package.
+
+```{r}
+library(quantreg)
+
+data(engel)
+
+head(engel)
+```
+
+The Engel dataset contains **235 Belgian working-class households** observed in 1857 by Ernst Engel.
+
+For each household we observe
+
+- **income** - annual household income (Belgian francs)
+- **foodexp** - annual household food expenditure (Belgian francs)
+
+Our aim is to estimate the conditional relationship between food expenditure and income.
+
+---
+
+# The Spreadsheet
+
+The spreadsheet implements the quantile regression objective function directly.
+
+Your task is to change the regression coefficients until the **Total Check Loss** is as small as possible.
+
+---
+
+# Column A: Income
+
+Column **A** contains the predictor variable
+
+$$
+x_i=\text{income}.
+$$
+
+These values come directly from the **engel** dataset.
+
+---
+
+# Column B: Food Expenditure
+
+Column **B** contains the observed response
+
+$$
+y_i=\text{food expenditure}.
+$$
+
+These are the values we wish to model.
+
+---
+
+# Columns C and D: Regression Coefficients
+
+These cells contain the coefficients of the regression model
+
+- $\beta_0$ (intercept)
+- $\beta_1$ (slope)
+
+Together they define the fitted regression equation
+
+$$
+\hat y_i=\beta_0+\beta_1x_i.
+$$
+
+Try changing these coefficients and observe how the fitted regression line changes.
+
+---
+
+# Column E: Predicted Values
+
+Column **E** calculates the fitted values
+
+$$
+\hat y_i
+=
+\beta_0+\beta_1x_i.
+$$
+
+These are the predicted food expenditures given your current regression coefficients.
+
+---
+
+# Column F: SIGN(u)
+
+Column **F** calculates
+
+```excel
+=SIGN(B2-E2)
+```
+
+where
+
+$$
+u_i=y_i-\hat y_i
+$$
+
+is the residual.
+
+The SIGN function determines on which side of the fitted line each observation lies.
+
+| SIGN(u) | Interpretation |
+|:-------:|----------------|
+| 1 | Observation lies **above** the fitted line ($u>0$) |
+| 0 | Observation lies **on** the fitted line |
+| -1 | Observation lies **below** the fitted line ($u<0$) |
+
+This column is an intermediate step used to construct the indicator function.
+
+---
+
+# Cell G2: Quantile Level
+
+Cell **G2** contains the quantile level
+
+$$
+\tau.
+$$
+
+Typical values are
+
+- $\tau=0.25$
+- $\tau=0.50$
+- $\tau=0.75$
+
+Changing $\tau$ changes the relative penalty assigned to positive and negative residuals.
+
+---
+
+# Column H: Indicator Function
+
+Column **H** calculates
+
+```excel
+=IF(F2<0,1,0)
+```
+
+which implements the indicator function
+
+$$
+1(u<0).
+$$
+
+The indicator function acts as a **switch**.
+
+If the residual is negative,
+
+$$
+u<0,
+$$
+
+the indicator returns
+
+$$
+1.
+$$
+
+Otherwise it returns
+
+$$
+0.
+$$
+
+Its only purpose is to determine which weight should be applied inside the check function.
+
+---
+
+# Column I: The Check Function
+
+Column **I** calculates
+
+```excel
+=(B2-E2)*($G$2-H2)
+```
+
+This is the Excel implementation of the check function
+
+$$
+\rho_\tau(u)
+=
+u\left(\tau-1(u<0)\right).
+$$
+
+The indicator function $1(u<0)$ acts as a **switch**. It checks whether the residual is negative, that is, whether an observation lies below the fitted line. If $u<0$, the indicator equals 1; otherwise it equals 0. This allows the check function to apply different penalties to observations on opposite sides of the fitted line without requiring separate formulas.
+
+The parameter $\tau$ determines the size of those penalties. Positive residuals (observations above the fitted line) are weighted by $\tau$, whereas negative residuals (observations below the fitted line) are weighted by $1-\tau$. By changing these relative weights, quantile regression shifts the fitted line towards different parts of the conditional distribution. For example, when $\tau=0.25$, negative residuals receive a larger penalty than positive residuals, pushing the fitted line downward towards the lower tail of the distribution. Conversely, when $\tau=0.75$, positive residuals are penalised more heavily, moving the fitted line upward towards the upper tail.
+
+Each row therefore contributes **one check loss** to the total objective function.
+
+---
+
+# Column J: Total Check Loss
+
+Column **J** computes
+
+```excel
+=SUM(I2:I236)
+```
+
+which is
+
+$$
+\sum_{i=1}^{235}
+\rho_\tau(u_i).
+$$
+
+This quantity is called the **Total Check Loss**.
+
+It is the objective function that quantile regression minimises.
+
+As you change the regression coefficients,
+
+- the fitted line moves,
+- the residuals change,
+- the check losses change,
+- and the Total Check Loss updates automatically.
+
+Your goal is to make this value **as small as possible**.
+
+---
+
+# Columns K-R
+
+The remaining columns contain helper calculations used for plotting the regression lines and charts.
+
+They are **not part of the optimisation** and can safely be ignored during this exercise.
+
+---
+
+# Your Task
+
+1. Choose a value of $\tau$.
+
+2. Change the regression coefficients
+
+   - $\beta_0$
+   - $\beta_1$
+
+3. Observe how the fitted regression line changes.
+
+4. Watch the **Total Check Loss** update.
+
+5. Continue adjusting the coefficients until the Total Check Loss is as small as possible.
+
+6. Record the coefficients that minimise the objective function.
+
+---
+
+# Comparing with R
+
+Once you have found the minimum manually, compare your solution with the estimates obtained from
+
+```{r eval=FALSE}
+library(quantreg)
+
+rq(
+  foodexp ~ income,
+  data = engel,
+  tau = 0.50
+)
+```
+
+The `rq()` function performs **exactly the same optimisation** that you have carried out manually.
+
+The only difference is that `rq()` uses an efficient optimisation algorithm to find the minimum instantly, whereas you have located it by trial and error.
+
+---
+
+# Take-Home Message
+
+This spreadsheet implements quantile regression exactly as defined mathematically.
+
+For each observation it
+
+1. computes the fitted value,
+2. determines whether the observation lies above or below the fitted line,
+3. evaluates the check loss,
+4. sums the losses over all observations.
+
+Quantile regression then chooses the regression coefficients that minimise this total check loss.
+
+The `rq()` function simply automates this optimisation.
