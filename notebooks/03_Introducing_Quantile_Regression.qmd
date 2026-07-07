@@ -250,6 +250,10 @@ $$\rho_\tau(u) = u \cdot \bigl(\tau - \mathbf{1}(u < 0)\bigr)$$
 
 where $u = y_i - x_i'\beta(\tau)$ is the residual.
 
+The indicator function $1(u<0)$ acts as a switch. It checks whether the residual is negative, that is, whether an observation lies below the fitted line. If $u<0$, the indicator equals $1$; otherwise it equals $0$. This allows the check function to apply different penalties to observations on opposite sides of the fitted line without requiring separate formulas.
+
+The parameter $\tau$ determines the size of those penalties. Positive residuals (observations above the fitted line) are weighted by $\tau$, whereas negative residuals (observations below the fitted line) are weighted by $1-\tau$. By changing these relative weights, quantile regression shifts the fitted line towards different parts of the conditional distribution. For example, when $\tau=0.25$, negative residuals receive a larger penalty than positive residuals, pushing the fitted line downward towards the lower tail of the distribution. Conversely, when $\tau=0.75$, positive residuals are penalised more heavily, moving the fitted line upward towards the upper tail.
+
 In plain terms:
 
 - When $u > 0$ (the observation lies **above** the fitted line), the penalty is $u \times \tau$.
