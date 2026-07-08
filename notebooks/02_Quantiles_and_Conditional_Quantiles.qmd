@@ -1,0 +1,326 @@
+---
+title: "Quantiles and Conditional Quantiles"
+subtitle: "Moving Beyond the Conditional Mean"
+author: "Tatjana Kecojević"
+date: last-modified
+
+bibliography: references.bib
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-summary: "Show/Hide Code"
+    smooth-scroll: true
+    page-layout: article
+
+  pdf:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    documentclass: article
+    geometry:
+      - margin=1in
+
+execute:
+  echo: true
+  warning: false
+  message: false
+  freeze: false
+---
+
+```{r setup}
+#| include: false
+
+library(tidyverse)
+library(dtplyr)
+library(ISLR)
+
+theme_set(theme_minimal())
+
+set.seed(123)
+```
+
+# Learning Objectives
+
+By the end of this session you will be able to:
+
+- Define quantiles and conditional quantiles
+- Distinguish between unconditional and conditional quantiles
+- Explain what quantile regression estimates
+- Compare OLS and quantile regression
+- Interpret quantile regression coefficients
+
+# Introduction
+
+In the previous session, we saw that average outcomes do not always provide a complete picture of a distribution. Two populations may have the same mean while exhibiting very different patterns of variation, and policies with identical average effects may benefit different groups in very different ways.
+
+To move beyond the mean, we need tools that allow us to examine different parts of a distribution separately. Quantiles provide one such tool.
+
+Although the term quantile may be unfamiliar, the underlying idea is not. Many people encounter quantiles in everyday life through growth charts used by paediatricians to monitor children's development. Rather than comparing a child to an average child, growth charts locate a child within the distribution of children of the same age using percentiles and centiles.
+
+The statistical study of human growth has a long history. One of the earliest researchers to investigate patterns of human development was Adolphe Quetelet, whose pioneering work in the nineteenth century laid important foundations for modern social and biological statistics [@quetelet1835]. The figure below illustrates Quetelet's representation of human growth across childhood and adolescence.
+
+![](images/Quetelet.png)
+
+While Quetelet was primarily interested in describing average patterns of growth, modern growth charts recognise that children of the same age can differ substantially in height, weight, and other physical characteristics. Understanding this variation requires us to look beyond averages and consider the distribution as a whole.
+
+In this session, we introduce quantiles and conditional quantiles and show how these concepts provide the foundation for quantile regression.
+
+# Why Do We Need Quantiles?
+
+Suppose a doctor tells a parent that their child is at the 25th percentile for height.
+
+What does this mean?
+
+The statement does not describe the child's distance from the average height. Instead, it describes the child's position within the distribution of heights for children of the same age.
+
+More specifically, a child at the 25th percentile is taller than approximately 25% of children and shorter than approximately 75%.
+
+Similarly, a child at the 75th percentile is taller than approximately 75% of children and shorter than approximately 25%.
+
+Growth charts therefore focus on a child's location within a distribution rather than on a comparison with the average child.
+
+This highlights an important distinction. While the mean provides a useful summary of a distribution, it tells us little about where individual observations are located within that distribution.
+
+To understand positions within a distribution, we need quantiles.
+
+```{r figure1-QuantilesDivideDistribution}
+#| fig-width: 8
+#| fig-height: 5
+
+wages <- rlnorm(
+  5000,
+  meanlog = log(25),
+  sdlog = .4
+)
+
+qs <- quantile(
+  wages,
+  probs = c(.25, .50, .75)
+)
+
+plot_1 <- tibble(wage = wages) %>%
+  ggplot(aes(x = wage)) +
+  geom_density(
+    fill = "steelblue",
+    alpha = .4
+  ) +
+  geom_vline(
+    xintercept = qs,
+    colour = "red",
+    linetype = "dashed",
+    linewidth = 1
+  ) +
+  labs(
+    title = "Quantiles Divide a Distribution",
+    subtitle = "Dashed lines indicate the 25th, 50th and 75th percentiles",
+    x = "Wage",
+    y = "Density"
+  )
+
+plot_1
+
+ggsave(
+  "figures/quantiles_distribution.png",
+  plot = plot_1,
+  width = 7,
+  height = 5
+)
+```
+
+The figure above shows a wage distribution together with three important quantiles. The first dashed line marks the 25th percentile. Approximately one quarter of observations lie below this value. The second dashed line marks the median (50th percentile), which divides the distribution into two equal halves. The third dashed line marks the 75th percentile. Approximately three quarters of observations lie below this value. Together, these quantiles provide a richer description of the distribution than a single average value.
+
+# Quantiles and Percentiles
+
+A quantile divides a distribution into ordered regions.
+
+The most familiar quantile is the median, which corresponds to the 50th percentile. The median divides a distribution into two equal halves, with 50% of observations lying below it and 50% lying above it.
+
+More generally:
+
+- The 25th percentile is the value below which 25% of observations fall.
+- The 50th percentile is the median.
+- The 75th percentile is the value below which 75% of observations fall.
+
+These three values are often referred to as quartiles because they divide the distribution into four ordered regions.
+
+Percentiles provide a more detailed description of a distribution than the mean because they allow us to focus on specific parts of the distribution rather than summarising everything with a single average value.
+
+```{r figure2-BoxplotQuantiles}
+
+plot_2 <- tibble(
+  wage = wages
+) %>%
+  ggplot(
+    aes(
+      x = "",
+      y = wage
+    )
+  ) +
+  geom_boxplot(
+    fill = "steelblue",
+    alpha = .5
+  ) +
+  labs(
+    title = "Quantiles Summarised in a Boxplot",
+    x = "",
+    y = "Wage"
+  )
+
+plot_2
+
+ggsave(
+  "figures/boxplot_quantiles.png",
+  plot = plot_2,
+  width = 5,
+  height = 6
+)
+```
+
+::: {.callout-tip}
+
+## Remember
+
+A quantile tells us the value below which a given proportion of observations falls.
+
+For example:
+
+- 25th percentile $\rightarrow$ 25% of observations lie below this value
+- 50th percentile $\rightarrow$ the median
+- 75th percentile $\rightarrow$ 75% of observations lie below this value
+:::
+
+Boxplots provide a compact summary of the distribution and are widely used for comparing distributions across groups. Although the boxplot looks very different from the density plot shown earlier, both figures describe the same distribution and highlight the same key quantiles.
+
+# Unconditional Quantiles
+
+The quantiles we have considered so far were calculated using the entire sample of observations. These are known as unconditional quantiles because they describe the distribution of a variable without taking any additional information into account. For example, the median wage shown above was calculated using all individuals in the sample. Similarly, the 25th and 75th percentiles describe positions within the overall wage distribution.
+
+**Unconditional quantiles** are useful for summarising a population as a whole. They allow us to answer questions such as:
+
+- What is the median wage?
+- What income separates the lowest-paid 25% of workers from the rest?
+- What value marks the top 10% of the distribution?
+
+However, many research questions require us to move beyond overall distributions and examine how distributions differ across groups. For example, wages may differ according to education, age, occupation, or gender. In such situations, overall quantiles may hide important differences between subpopulations. To understand these differences, we need conditional quantiles.
+
+```{r figure3-WageDistributionsByEducation}
+
+low_edu <- rlnorm(
+  2000,
+  meanlog = log(20),
+  sdlog = .35
+)
+
+high_edu <- rlnorm(
+  2000,
+  meanlog = log(35),
+  sdlog = .35
+)
+
+edu_df <- tibble(
+  wage = c(low_edu, high_edu),
+  education = rep(
+    c("Lower Education",
+      "Higher Education"),
+    each = 2000
+  )
+)
+
+plot_3 <- ggplot(
+  edu_df,
+  aes(
+    x = wage,
+    fill = education
+  )
+) +
+  geom_density(alpha = .4) +
+  facet_wrap(~education) +
+  labs(
+    title = "Wage Distributions Differ Across Educational Groups",
+    x = "Hourly wage",
+    y = "Density"
+  )
+
+plot_3
+
+ggsave(
+  "figures/wage_distributions_by_education.png",
+  plot = plot_3,
+  width = 7,
+  height = 5
+)
+```
+
+The figure above shows two wage distributions corresponding to different levels of educational attainment. While the overall wage distribution can be summarised using unconditional quantiles, these summaries do not capture differences between groups. Workers with higher levels of education tend to have higher wages throughout the distribution. This suggests that quantiles may depend on other characteristics, such as education.
+
+# Conditional Quantiles
+
+The wage distributions shown above illustrate an important idea: quantiles may depend on other characteristics. For example, the median wage for workers with higher levels of education differs from the median wage for workers with lower levels of education. Likewise, the 25th and 75th percentiles may also differ across educational groups. When quantiles are calculated for specific values of another variable, they are known as **conditional quantiles**.
+
+In contrast to unconditional quantiles, which describe the overall distribution of an outcome, conditional quantiles describe the distribution of an outcome given a particular condition or characteristic. This distinction is fundamental.
+
+- Unconditional quantiles describe an entire population.
+- Conditional quantiles describe a population conditional on age, education, income, gender, or other characteristics.
+
+Many research questions in the social sciences require conditional rather than unconditional quantiles because outcomes often vary systematically across groups.
+
+## Growth Charts as Conditional Quantiles
+
+Growth charts provide one of the most familiar examples of conditional quantiles. Consider a child's weight. A weight of 20 kilograms may be considered relatively large for a two-year-old child but relatively small for a ten-year-old child. Consequently, the interpretation of a child's weight depends on age. Growth charts therefore describe the distribution of weight conditional on age.
+
+Each centile curve shown on a growth chart represents a conditional quantile. The middle curve corresponds approximately to the median weight at each age, while the remaining curves describe other locations within the distribution. Rather than comparing children to a single average value, growth charts compare children to others of the same age.
+
+![](images/OverlapGWtFinal.png)
+
+The figure above illustrates a set of growth centiles for girls from birth to 36 months. Each curve represents a different conditional quantile of the weight distribution. For example, the upper curves describe heavier children at a given age, while the lower curves describe lighter children. Together, the curves provide a detailed picture of how the entire distribution changes throughout early childhood [@wei2006].
+
+In this sense, growth charts can be viewed as collections of conditional quantile curves plotted across age.
+
+::: {.callout-note}
+## Key Idea
+
+A growth chart is not a plot of averages.
+
+Each centile curve represents a conditional quantile describing a different part of the distribution for children of the same age.
+:::
+
+# From Conditional Quantiles to Quantile Regression
+
+The examples above illustrate a common theme: in many applications, researchers are interested in understanding how an outcome is distributed for different groups or under different conditions. Growth charts describe weight distributions conditional on age. Wage distributions may differ according to education. Educational achievement may vary according to class size or socioeconomic background. In each case, the quantities of interest are conditional quantiles rather than conditional means.
+
+The challenge is that real-world datasets often contain many explanatory variables. Rather than calculating separate quantiles for every possible subgroup, we need a statistical framework that allows us to estimate conditional quantiles as functions of explanatory variables.
+
+This idea forms the foundation of quantile regression. Instead of modelling only the conditional mean, quantile regression allows us to model different points of the conditional distribution [@koenker1978]. The central object of interest is the conditional quantile function, which describes how different parts of the outcome distribution vary with explanatory variables.
+
+For example, rather than asking:
+
+> How does education affect average wages?
+
+quantile regression allows us to ask:
+
+- How does education affect lower-paid workers?
+- How does education affect workers in the middle of the wage distribution?
+- How does education affect high-paid workers?
+
+By modelling different parts of the distribution separately, quantile regression provides a richer understanding of heterogeneity than mean-based approaches. The next session introduces the quantile regression model and explains how conditional quantiles can be estimated directly from data.
+
+::: {.callout-important}
+## Take-Home Message
+
+Quantiles describe positions within a distribution.
+
+Unconditional quantiles summarise an entire population, whereas conditional quantiles describe the distribution of an outcome for specific values of other variables.
+
+Quantile regression builds on this idea by modelling conditional quantiles directly.
+:::
+
+# References
+
+::: {#refs}
+:::
+
